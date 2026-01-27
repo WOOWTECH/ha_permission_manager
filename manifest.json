@@ -1,7 +1,7 @@
 {
   "domain": "ha_permission_manager",
   "name": "Permission Manager",
-  "version": "2.9.2",
+  "version": "2.9.3",
   "documentation": "https://github.com/your-repo/ha_permission_manager",
   "dependencies": ["frontend", "auth"],
   "codeowners": [],

@@ -12,26 +12,27 @@ import {
 
 // Inlined shared styles for HA panel compatibility
 const sharedStylesLit = `
-  /* TOP BAR */
+  /* TOP BAR - follows HA dark/light mode */
   .top-bar {
     display: flex;
     align-items: center;
-    height: 56px;
+    height: var(--header-height, 56px);
     padding: 0 16px;
-    background: var(--primary-color);
-    color: white;
+    background: var(--app-header-background-color, var(--primary-background-color));
+    color: var(--app-header-text-color, var(--primary-text-color));
     position: sticky;
     top: 0;
     z-index: 100;
     gap: 12px;
     margin: -16px -16px 16px -16px;
+    border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.12));
   }
   .top-bar-sidebar-btn {
     width: 40px;
     height: 40px;
     border: none;
     background: transparent;
-    color: white;
+    color: var(--app-header-text-color, var(--primary-text-color));
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -40,12 +41,12 @@ const sharedStylesLit = `
     transition: background 0.2s;
     flex-shrink: 0;
   }
-  .top-bar-sidebar-btn:hover { background: rgba(255, 255, 255, 0.1); }
+  .top-bar-sidebar-btn:hover { background: var(--secondary-background-color, rgba(0, 0, 0, 0.1)); }
   .top-bar-sidebar-btn svg { width: 24px; height: 24px; }
   .top-bar-title {
     flex: 1;
     font-size: 20px;
-    font-weight: 500;
+    font-weight: 400;
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -57,7 +58,7 @@ const sharedStylesLit = `
     height: 40px;
     border: none;
     background: transparent;
-    color: white;
+    color: var(--app-header-text-color, var(--primary-text-color));
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -65,7 +66,7 @@ const sharedStylesLit = `
     border-radius: 50%;
     transition: background 0.2s;
   }
-  .top-bar-action-btn:hover { background: rgba(255, 255, 255, 0.1); }
+  .top-bar-action-btn:hover { background: var(--secondary-background-color, rgba(0, 0, 0, 0.1)); }
   .top-bar-action-btn svg { width: 24px; height: 24px; }
 
   /* SEARCH ROW */
@@ -512,16 +513,17 @@ class HaPermissionManager extends LitElement {
         display: flex;
         align-items: center;
         gap: 6px;
-        background: rgba(255, 255, 255, 0.2);
+        background: var(--secondary-background-color, rgba(0, 0, 0, 0.05));
         padding: 4px 10px;
         border-radius: 12px;
         font-size: 12px;
         font-weight: 500;
-        color: white;
+        color: var(--secondary-text-color, #757575);
       }
 
       .stat-chip ha-icon {
         --mdc-icon-size: 16px;
+        color: var(--secondary-text-color, #757575);
       }
 
       .content {
