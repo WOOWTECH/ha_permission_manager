@@ -1,0 +1,385 @@
+/**
+ * HA Permission Manager - Sidebar Filter
+ * Hides panels user doesn't have access to
+ *
+ * v2.9.0 - Auto-sync new dashboards, listen to lovelace_updated event
+ */
+(function() {
+  "use strict";
+
+  const PERM_DENY = 0;
+
+  // State
+  let originalPanels = null;  // Stored once on first load
+  let currentUserId = null;
+  let isAdmin = false;
+  let initialized = false;
+
+  /**
+   * Wait for Home Assistant frontend to be ready
+   */
+  function waitForHass(maxWait = 15000) {
+    return new Promise((resolve) => {
+      const start = Date.now();
+
+      function check() {
+        const haMain = document.querySelector("home-assistant");
+        if (haMain && haMain.hass && haMain.hass.user && haMain.hass.panels) {
+          resolve(haMain.hass);
+          return;
+        }
+
+        if (Date.now() - start > maxWait) {
+          console.warn("[SidebarFilter] Timeout waiting for hass");
+          resolve(null);
+          return;
+        }
+
+        setTimeout(check, 100);
+      }
+
+      check();
+    });
+  }
+
+  /**
+   * Store original panels on first load (before any filtering)
+   */
+  async function storeOriginalPanels() {
+    if (originalPanels) return originalPanels;
+
+    const hass = await waitForHass();
+    if (!hass || !hass.panels) return null;
+
+    // Deep copy the original panels
+    originalPanels = JSON.parse(JSON.stringify(hass.panels));
+    console.log("[SidebarFilter] Stored", Object.keys(originalPanels).length, "original panels");
+    return originalPanels;
+  }
+
+  /**
+   * Fetch permissions from WebSocket API
+   */
+  async function fetchPermissions() {
+    try {
+      const hass = await waitForHass();
+      if (!hass) return { permissions: {}, is_admin: false };
+
+      const result = await hass.callWS({
+        type: "permission_manager/get_panel_permissions",
+      });
+
+      isAdmin = result.is_admin || false;
+      currentUserId = result.user_id || null;
+
+      console.log("[SidebarFilter] Fetched permissions: is_admin=" + isAdmin + ", permissions:", result.permissions);
+
+      return {
+        permissions: result.permissions || {},
+        is_admin: isAdmin,
+        user_id: currentUserId,
+      };
+    } catch (err) {
+      console.error("[SidebarFilter] Failed to fetch permissions:", err);
+      return { permissions: {}, is_admin: false, user_id: null };
+    }
+  }
+
+  /**
+   * Apply sidebar filtering
+   */
+  async function applySidebarFilter() {
+    console.log("[SidebarFilter] applySidebarFilter called");
+    const haMain = document.querySelector("home-assistant");
+    if (!haMain || !haMain.hass) {
+      console.warn("[SidebarFilter] haMain or hass not available");
+      return;
+    }
+
+    // Store original panels on first run
+    await storeOriginalPanels();
+    if (!originalPanels) {
+      console.error("[SidebarFilter] Failed to store original panels");
+      return;
+    }
+
+    // Fetch permissions from backend
+    const { permissions, is_admin } = await fetchPermissions();
+    console.log("[SidebarFilter] Fetched: is_admin=" + is_admin + ", user_id=" + currentUserId + ", permissions=", JSON.stringify(permissions));
+
+    // Admin users see all panels
+    if (is_admin) {
+      console.log("[SidebarFilter] Admin user, showing all", Object.keys(originalPanels).length, "panels");
+      haMain.hass = { ...haMain.hass, panels: { ...originalPanels } };
+      return;
+    }
+
+    // Core panels that should NEVER be hidden
+    // - profile: user needs access to logout
+    const ALWAYS_VISIBLE_PANELS = ["profile"];
+
+    // For non-admin users, filter panels
+    // ONLY hide panels that are explicitly set to 0 (DENY)
+    // All other panels (undefined, 1, 2, 3) are shown
+    const filteredPanels = {};
+    let hiddenCount = 0;
+    const hiddenPanels = [];
+
+    for (const [panelId, panel] of Object.entries(originalPanels)) {
+      // Never hide core panels like profile
+      if (ALWAYS_VISIBLE_PANELS.includes(panelId)) {
+        filteredPanels[panelId] = panel;
+        continue;
+      }
+
+      const level = permissions[panelId];
+
+      // Only hide if explicitly set to 0
+      if (level === PERM_DENY) {
+        hiddenPanels.push(panelId);
+        hiddenCount++;
+        continue;
+      }
+
+      // Show all other panels (including those without permission set)
+      filteredPanels[panelId] = panel;
+    }
+
+    // Apply filtered panels
+    haMain.hass = { ...haMain.hass, panels: filteredPanels };
+    console.log("[SidebarFilter] Applied filter: showing", Object.keys(filteredPanels).length, "panels, hidden", hiddenCount, ":", hiddenPanels);
+  }
+
+  /**
+   * Check current URL and block access if denied
+   */
+  async function checkCurrentPanelAccess() {
+    if (isAdmin) return;
+
+    const { permissions } = await fetchPermissions();
+
+    const path = window.location.pathname;
+
+    // Handle root path as lovelace - always allow access (content will be filtered)
+    if (path === "/" || path === "") {
+      return;
+    }
+
+    const match = path.match(/^\/([^\/]+)/);
+    if (!match) return;
+
+    const currentPanel = match[1];
+
+    // Skip system paths and always-accessible panels
+    if (["local", "api", "auth", "static", "frontend_latest", "frontend_es5", "_my_redirect", "profile"].includes(currentPanel)) {
+      return;
+    }
+
+    let panelToCheck = currentPanel;
+
+    // Only block if explicitly denied
+    if (permissions[panelToCheck] === PERM_DENY) {
+      console.log("[SidebarFilter] Access denied for panel:", panelToCheck);
+      showAccessDenied();
+    }
+  }
+
+  /**
+   * Show access denied page
+   */
+  function showAccessDenied() {
+    if (document.querySelector("ha-access-denied")) return;
+
+    const accessDenied = document.createElement("ha-access-denied");
+    const haMain = document.querySelector("home-assistant");
+    if (haMain && haMain.hass) {
+      accessDenied.hass = haMain.hass;
+    }
+
+    document.body.innerHTML = "";
+    document.body.appendChild(accessDenied);
+
+    if (!customElements.get("ha-access-denied")) {
+      const script = document.createElement("script");
+      script.type = "module";
+      script.src = "/local/ha_access_denied.js?v=2.5.1&t=" + Date.now();
+      document.head.appendChild(script);
+    }
+  }
+
+  /**
+   * Subscribe to permission changes
+   */
+  async function subscribeToChanges() {
+    const hass = await waitForHass();
+    if (!hass || !hass.connection) return;
+
+    // Listen for permission entity changes
+    hass.connection.subscribeEvents(async (event) => {
+      const entityId = event.data?.entity_id;
+      if (!entityId || !entityId.startsWith("select.perm_")) return;
+
+      const newState = event.data?.new_state;
+      if (!newState) return;
+
+      // Only care about panel permissions
+      if (newState.attributes?.resource_type !== "panel") return;
+
+      // Only care about permissions for the current user
+      const permUserId = newState.attributes?.user_id;
+      if (!permUserId) {
+        console.log("[SidebarFilter] Permission changed but no user_id attribute:", entityId);
+        return;
+      }
+
+      // Check if this permission change is for the current user
+      // If currentUserId is not set yet, try to get it
+      if (!currentUserId) {
+        const { user_id } = await fetchPermissions();
+        if (!user_id) {
+          console.warn("[SidebarFilter] Cannot determine current user ID");
+          return;
+        }
+      }
+
+      if (permUserId !== currentUserId) {
+        console.log("[SidebarFilter] Permission changed for different user:", permUserId, "current:", currentUserId);
+        return;
+      }
+
+      console.log("[SidebarFilter] Permission changed for current user:", entityId, "->", newState.state);
+
+      // Small delay to ensure state is fully propagated
+      await new Promise(r => setTimeout(r, 100));
+
+      // Re-apply filter
+      await applySidebarFilter();
+      await checkCurrentPanelAccess();
+    }, "state_changed");
+
+    // Listen for user_updated events (when admin status changes in HA)
+    hass.connection.subscribeEvents(async (event) => {
+      console.log("[SidebarFilter] User updated event received:", event.data);
+
+      // Check if current user's admin status changed
+      const oldIsAdmin = isAdmin;
+      const { is_admin } = await fetchPermissions();
+
+      if (oldIsAdmin !== is_admin) {
+        console.log("[SidebarFilter] Admin status changed via user_updated:", oldIsAdmin, "->", is_admin);
+        // Force reload to reset all state
+        location.reload();
+        return;
+      }
+
+      // Even if admin status didn't change, re-apply filter in case permissions changed
+      await applySidebarFilter();
+    }, "user_updated");
+
+    // Listen for auth events (login/logout, permission changes)
+    hass.connection.subscribeEvents(async (event) => {
+      console.log("[SidebarFilter] Auth event received:", event.data);
+
+      // Re-check admin status and permissions
+      const oldIsAdmin = isAdmin;
+      const { is_admin } = await fetchPermissions();
+
+      if (oldIsAdmin !== is_admin) {
+        console.log("[SidebarFilter] Admin status changed via auth event:", oldIsAdmin, "->", is_admin);
+        location.reload();
+        return;
+      }
+
+      await applySidebarFilter();
+    }, "homeassistant_auth_updated");
+
+    // Listen for lovelace dashboard changes (create/delete)
+    hass.connection.subscribeEvents(async (event) => {
+      const action = event.data?.action;
+      console.log("[SidebarFilter] Lovelace updated event:", action, event.data);
+
+      if (action === "create" || action === "delete") {
+        // Wait a bit for backend to create/remove permission entities
+        await new Promise(r => setTimeout(r, 500));
+
+        // Refresh originalPanels from current hass.panels
+        const haMain = document.querySelector("home-assistant");
+        if (haMain && haMain.hass && haMain.hass.panels) {
+          originalPanels = JSON.parse(JSON.stringify(haMain.hass.panels));
+          console.log("[SidebarFilter] Refreshed originalPanels:", Object.keys(originalPanels).length, "panels");
+        }
+
+        // Re-apply filter with new permissions
+        await applySidebarFilter();
+      }
+    }, "lovelace_updated");
+
+    // Also poll every 5 seconds as fallback (reduced from original)
+    setInterval(async () => {
+      const oldIsAdmin = isAdmin;
+      const { is_admin } = await fetchPermissions();
+
+      if (oldIsAdmin !== is_admin) {
+        console.log("[SidebarFilter] Admin status changed (poll):", oldIsAdmin, "->", is_admin);
+        location.reload();
+      }
+    }, 5000);
+
+    console.log("[SidebarFilter] Subscribed to changes (state_changed, user_updated, auth, lovelace_updated)");
+  }
+
+  /**
+   * Watch for navigation
+   */
+  function watchNavigation() {
+    window.addEventListener("popstate", () => checkCurrentPanelAccess());
+
+    document.addEventListener("click", (e) => {
+      const link = e.target.closest("a");
+      if (link && link.href && link.href.startsWith(window.location.origin)) {
+        setTimeout(() => checkCurrentPanelAccess(), 150);
+      }
+    });
+
+    const originalPushState = history.pushState;
+    history.pushState = function(...args) {
+      originalPushState.apply(this, args);
+      setTimeout(() => checkCurrentPanelAccess(), 150);
+    };
+  }
+
+  /**
+   * Initialize
+   */
+  async function init() {
+    if (initialized) return;
+    initialized = true;
+
+    console.log("[SidebarFilter] Initializing v2.9.0");
+
+    // Wait a bit for HA to fully load
+    await new Promise(r => setTimeout(r, 500));
+
+    await applySidebarFilter();
+    watchNavigation();
+    await subscribeToChanges();
+    await checkCurrentPanelAccess();
+
+    console.log("[SidebarFilter] Initialization complete");
+  }
+
+  // Start when DOM is ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    // Small delay to ensure HA is ready
+    setTimeout(init, 500);
+  }
+
+  // Expose for debugging
+  window.__permissionManagerSidebar = {
+    refresh: applySidebarFilter,
+    getOriginalPanels: () => originalPanels,
+    getState: () => ({ isAdmin, currentUserId, initialized }),
+  };
+})();
