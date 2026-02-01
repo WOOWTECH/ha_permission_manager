@@ -193,16 +193,21 @@
 
   /**
    * Show access denied page - insert into HA DOM structure
-   * v2.9.24: Insert into partial-panel-resolver to work with HA's native layout
+   * v2.9.25: Added detailed logging and improved fallback handling
    */
   function showAccessDenied() {
-    console.log("[SidebarFilter] showAccessDenied() called");
+    console.log("[SidebarFilter] showAccessDenied() called - v2.9.25");
 
-    // 獲取 DOM 引用
+    // 獲取 DOM 引用並記錄狀態
     const haMain = document.querySelector("home-assistant");
     const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
     const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
     const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
+
+    console.log("[SidebarFilter] DOM check: haMain=" + !!haMain +
+      ", homeAssistantMain=" + !!homeAssistantMain +
+      ", haDrawer=" + !!haDrawer +
+      ", partialPanelResolver=" + !!partialPanelResolver);
 
     // 檢查是否已存在（在 partial-panel-resolver 或 document.body）
     const existingInResolver = partialPanelResolver?.querySelector("ha-access-denied");
@@ -218,9 +223,10 @@
       script.type = "module";
       script.src = "/local/ha_access_denied.js?v=" + Date.now();
       document.head.appendChild(script);
+      console.log("[SidebarFilter] Loading ha_access_denied.js");
     }
 
-    // 創建組件（非 standalone 模式，不需要自己的 header）
+    // 創建組件
     const accessDenied = document.createElement("ha-access-denied");
     if (haMain?.hass) {
       accessDenied.hass = haMain.hass;
@@ -245,15 +251,17 @@
       `;
 
       partialPanelResolver.appendChild(accessDenied);
-      console.log("[SidebarFilter] Access denied inserted into partial-panel-resolver");
+      console.log("[SidebarFilter] ✓ Access denied inserted into partial-panel-resolver (non-standalone mode)");
     } else {
       // Fallback: 如果找不到 partial-panel-resolver，使用 standalone 模式
-      console.warn("[SidebarFilter] partial-panel-resolver not found, using standalone mode");
+      console.warn("[SidebarFilter] ✗ partial-panel-resolver not found, using standalone mode");
       accessDenied.setAttribute("standalone", "true");
 
       const haSidebar = haDrawer?.querySelector("ha-sidebar");
       const sidebarWidth = haSidebar?.offsetWidth || 0;
 
+      // 使用較低的 z-index，避免擋住側邊欄的下拉選單
+      // 側邊欄下拉選單通常 z-index > 10
       accessDenied.style.cssText = `
         position: fixed;
         top: 0;
@@ -266,7 +274,7 @@
       `;
 
       document.body.appendChild(accessDenied);
-      console.log("[SidebarFilter] Access denied displayed in standalone mode (sidebar width: " + sidebarWidth + "px)");
+      console.log("[SidebarFilter] ✓ Access denied displayed in standalone mode (sidebar width: " + sidebarWidth + "px)");
     }
   }
 

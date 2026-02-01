@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.24 - Removed standalone header, integrated into HA DOM structure
+ * v2.9.25 - Fixed hamburger button using direct DOM manipulation
  */
 import {
   LitElement,
@@ -83,37 +83,54 @@ class HaAccessDenied extends LitElement {
   }
 
   /**
-   * Toggle sidebar by dispatching hass-toggle-menu event from within HA tree
-   * This ensures the event reaches HA's sidebar listener correctly
+   * Toggle sidebar using direct DOM manipulation
+   * v2.9.25: Changed from event dispatch to direct property manipulation
+   * because events don't cross Shadow DOM boundaries reliably
    */
   _toggleSidebar() {
+    console.log("[AccessDenied] _toggleSidebar() called");
+
     const haDrawer = this._getHaDrawer();
     const haSidebar = haDrawer?.querySelector("ha-sidebar");
 
-    // Dispatch event from ha-sidebar or ha-drawer (inside HA's component tree)
-    // This is the same mechanism HA's native hamburger button uses
-    const targetElement = haSidebar || haDrawer;
-
-    if (targetElement) {
-      targetElement.dispatchEvent(new CustomEvent("hass-toggle-menu", {
-        bubbles: true,
-        composed: true
-      }));
-
-      // Update position after transitions
-      setTimeout(() => this._updatePosition(), 50);
-      setTimeout(() => this._updatePosition(), 300);
+    if (!haDrawer) {
+      console.warn("[AccessDenied] ha-drawer not found");
       return;
     }
 
-    // Fallback: try from home-assistant element
-    const haMain = document.querySelector("home-assistant");
-    if (haMain) {
-      haMain.dispatchEvent(new CustomEvent("hass-toggle-menu", {
-        bubbles: true,
-        composed: true
-      }));
+    // Check current state - desktop mode uses 'expanded', mobile uses 'open'
+    const isNarrow = haDrawer.narrow || haDrawer.hasAttribute("narrow");
+
+    if (isNarrow) {
+      // Mobile/tablet mode: toggle the drawer's 'open' property
+      const isOpen = haDrawer.open || haDrawer.hasAttribute("open");
+      console.log("[AccessDenied] Mobile mode, isOpen=" + isOpen);
+
+      if (isOpen) {
+        haDrawer.open = false;
+        haDrawer.removeAttribute("open");
+      } else {
+        haDrawer.open = true;
+        haDrawer.setAttribute("open", "");
+      }
+    } else {
+      // Desktop mode: toggle the sidebar's 'expanded' property
+      if (haSidebar) {
+        const isExpanded = haSidebar.expanded !== false;
+        console.log("[AccessDenied] Desktop mode, isExpanded=" + isExpanded);
+
+        haSidebar.expanded = !isExpanded;
+        if (isExpanded) {
+          haSidebar.removeAttribute("expanded");
+        } else {
+          haSidebar.setAttribute("expanded", "");
+        }
+      }
     }
+
+    // Update position after transitions
+    setTimeout(() => this._updatePosition(), 50);
+    setTimeout(() => this._updatePosition(), 300);
   }
 
   /**
