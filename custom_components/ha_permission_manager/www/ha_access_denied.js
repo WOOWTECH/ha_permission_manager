@@ -51,7 +51,10 @@ class HaAccessDenied extends LitElement {
   }
 
   _handleReturnHome() {
-    window.location.href = "/profile/general";
+    // Use location.assign for same-origin navigation
+    // This works in Android HA app without opening external browser
+    // because /profile/general is on the same origin
+    window.location.assign("/profile/general");
   }
 
   static get styles() {

@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.1 - Added sidebar title i18n support
+ * v2.9.6 - Fixed Shadow DOM traversal for sidebar title i18n
  */
 (function() {
   "use strict";
@@ -361,7 +361,7 @@
     const haDrawer = homeAssistantMain.shadowRoot.querySelector("ha-drawer");
     if (!haDrawer) return;
 
-    const haSidebar = haDrawer.querySelector("ha-sidebar");
+    const haSidebar = haDrawer.shadowRoot?.querySelector("ha-sidebar");
     if (!haSidebar?.shadowRoot) return;
 
     // Find the sidebar navigation items
@@ -408,7 +408,7 @@
     if (initialized) return;
     initialized = true;
 
-    console.log("[SidebarFilter] Initializing v2.9.1");
+    console.log("[SidebarFilter] Initializing v2.9.6");
 
     // Wait a bit for HA to fully load
     await new Promise(r => setTimeout(r, 500));
