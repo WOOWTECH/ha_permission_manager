@@ -51,10 +51,17 @@ class HaAccessDenied extends LitElement {
   }
 
   _handleReturnHome() {
-    // For Android App WebView compatibility, use direct location.href
-    // This forces a full page reload which works reliably in all environments
-    console.log("[AccessDenied] Navigating to /profile/general");
-    window.location.href = "/profile/general";
+    // Use anchor element click for HA internal navigation
+    // HA frontend intercepts anchor clicks and handles them via history API
+    // This works correctly in Android/iOS WebView apps (stays inside the app)
+    console.log("[AccessDenied] Navigating to /profile/general via anchor click");
+
+    const link = document.createElement("a");
+    link.href = "/profile/general";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   static get styles() {

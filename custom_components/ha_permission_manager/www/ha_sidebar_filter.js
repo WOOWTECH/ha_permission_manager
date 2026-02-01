@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.8 - Fixed sidebar title i18n with retry mechanism, simplified navigation
+ * v2.9.9 - Fixed sidebar title language auto-switch via core_config_updated event
  */
 (function() {
   "use strict";
@@ -333,7 +333,27 @@
       }
     }, 5000);
 
-    console.log("[SidebarFilter] Subscribed to changes (state_changed, user_updated, auth, lovelace_updated)");
+    // Listen for language changes via core_config_updated event
+    hass.connection.subscribeEvents(async (event) => {
+      console.log("[SidebarFilter] Core config updated event received");
+
+      // Get current language from hass object (more reliable than event data)
+      const haMain = document.querySelector("home-assistant");
+      const newLanguage = haMain?.hass?.language || "en";
+
+      // Skip if language hasn't changed
+      if (newLanguage === lastLanguage) {
+        return;
+      }
+
+      console.log("[SidebarFilter] Language changed:", lastLanguage, "->", newLanguage);
+      lastLanguage = newLanguage;
+
+      // Update sidebar title via hass.panels data model
+      updateSidebarTitleViaHass(newLanguage);
+    }, "core_config_updated");
+
+    console.log("[SidebarFilter] Subscribed to changes (state_changed, user_updated, auth, lovelace_updated, core_config_updated)");
   }
 
   /**
@@ -391,6 +411,42 @@
   }
 
   /**
+   * Update sidebar title by modifying hass.panels data model
+   * This triggers HA's reactive UI update automatically
+   */
+  function updateSidebarTitleViaHass(lang) {
+    const haMain = document.querySelector("home-assistant");
+    if (!haMain?.hass?.panels) {
+      console.log("[SidebarFilter] updateSidebarTitleViaHass: hass.panels not ready");
+      return false;
+    }
+
+    const panel = haMain.hass.panels.ha_permission_manager;
+    if (!panel) {
+      console.log("[SidebarFilter] updateSidebarTitleViaHass: panel not found");
+      return false;
+    }
+
+    const title = (lang && lang.startsWith("zh")) ? SIDEBAR_TITLES.zh : SIDEBAR_TITLES.en;
+
+    // Only update if title actually changed
+    if (panel.title === title) {
+      console.log("[SidebarFilter] Sidebar title already correct:", title);
+      return true;
+    }
+
+    // Update the panel data model - this triggers HA's reactive update
+    const updatedPanels = { ...haMain.hass.panels };
+    updatedPanels.ha_permission_manager = { ...panel, title: title };
+
+    // Trigger reactive update by assigning new hass object
+    haMain.hass = { ...haMain.hass, panels: updatedPanels };
+
+    console.log("[SidebarFilter] ✓ Updated sidebar title via hass.panels:", title);
+    return true;
+  }
+
+  /**
    * Initialize sidebar title with retry mechanism
    */
   function initSidebarTitle() {
@@ -443,18 +499,27 @@
     if (initialized) return;
     initialized = true;
 
-    console.log("[SidebarFilter] Initializing v2.9.6");
+    console.log("[SidebarFilter] Initializing v2.9.9");
 
     // Wait a bit for HA to fully load
     await new Promise(r => setTimeout(r, 500));
+
+    // Initialize lastLanguage from current hass state
+    const hass = await waitForHass();
+    if (hass) {
+      lastLanguage = hass.language || "en";
+      console.log("[SidebarFilter] Initial language:", lastLanguage);
+    }
 
     await applySidebarFilter();
     watchNavigation();
     await subscribeToChanges();
     await checkCurrentPanelAccess();
 
-    // Initialize sidebar title with retry mechanism
-    initSidebarTitle();
+    // Initialize sidebar title - prefer hass.panels method, fallback to DOM
+    if (!updateSidebarTitleViaHass(lastLanguage)) {
+      initSidebarTitle(); // Fallback to DOM manipulation
+    }
 
     console.log("[SidebarFilter] Initialization complete");
   }
@@ -471,8 +536,9 @@
   window.__permissionManagerSidebar = {
     refresh: applySidebarFilter,
     getOriginalPanels: () => originalPanels,
-    getState: () => ({ isAdmin, currentUserId, initialized }),
+    getState: () => ({ isAdmin, currentUserId, initialized, lastLanguage }),
     updateSidebarTitle: updateSidebarTitle,
+    updateSidebarTitleViaHass: updateSidebarTitleViaHass,
     initSidebarTitle: initSidebarTitle,
   };
 })();
