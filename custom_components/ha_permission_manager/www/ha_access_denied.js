@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.27 - Restored header and hamburger button, fixed navigation
+ * v2.9.28 - Fixed hamburger button mode detection, added ResizeObserver
  */
 import {
   LitElement,
@@ -53,6 +53,7 @@ class HaAccessDenied extends LitElement {
     this.standalone = false;
     this._drawerObserver = null;
     this._sidebarObserver = null;
+    this._resizeObserver = null;
     this._resizeHandler = null;
   }
 
@@ -85,7 +86,7 @@ class HaAccessDenied extends LitElement {
   /**
    * Toggle sidebar using direct DOM manipulation
    * v2.9.25: Changed from event dispatch to direct property manipulation
-   * because events don't cross Shadow DOM boundaries reliably
+   * v2.9.28: Improved mode detection with window.innerWidth fallback
    */
   _toggleSidebar() {
     console.log("[AccessDenied] _toggleSidebar() called");
@@ -99,25 +100,32 @@ class HaAccessDenied extends LitElement {
     }
 
     // Check current state - desktop mode uses 'expanded', mobile uses 'open'
-    const isNarrow = haDrawer.narrow || haDrawer.hasAttribute("narrow");
+    // v2.9.28: Added window.innerWidth < 870 as fallback (HA's narrow breakpoint)
+    const isNarrow = haDrawer.narrow ||
+                     haDrawer.hasAttribute("narrow") ||
+                     window.innerWidth < 870;
+
+    console.log("[AccessDenied] isNarrow=" + isNarrow + ", window.innerWidth=" + window.innerWidth);
 
     if (isNarrow) {
       // Mobile/tablet mode: toggle the drawer's 'open' property
       const isOpen = haDrawer.open || haDrawer.hasAttribute("open");
       console.log("[AccessDenied] Mobile mode, isOpen=" + isOpen);
 
+      haDrawer.open = !isOpen;
       if (isOpen) {
-        haDrawer.open = false;
         haDrawer.removeAttribute("open");
       } else {
-        haDrawer.open = true;
         haDrawer.setAttribute("open", "");
       }
     } else {
       // Desktop mode: toggle the sidebar's 'expanded' property
       if (haSidebar) {
-        const isExpanded = haSidebar.expanded !== false;
-        console.log("[AccessDenied] Desktop mode, isExpanded=" + isExpanded);
+        // v2.9.28: Improved expanded detection - check attribute and width
+        const isExpanded = haSidebar.hasAttribute("expanded") ||
+                           haSidebar.expanded === true ||
+                           haSidebar.offsetWidth > 100;
+        console.log("[AccessDenied] Desktop mode, isExpanded=" + isExpanded + ", sidebarWidth=" + haSidebar.offsetWidth);
 
         haSidebar.expanded = !isExpanded;
         if (isExpanded) {
@@ -145,6 +153,7 @@ class HaAccessDenied extends LitElement {
 
   /**
    * Setup observers for sidebar width changes
+   * v2.9.28: Added ResizeObserver for reliable width tracking
    */
   _setupSidebarObserver() {
     // Initial position update
@@ -187,11 +196,20 @@ class HaAccessDenied extends LitElement {
       });
 
       haSidebar.addEventListener("transitionend", this._resizeHandler);
+
+      // v2.9.28: Add ResizeObserver to track actual width changes
+      // This catches sidebar expand/collapse that doesn't trigger attribute changes
+      this._resizeObserver = new ResizeObserver(() => {
+        console.log("[AccessDenied] ResizeObserver triggered, sidebarWidth=" + haSidebar.offsetWidth);
+        this._updatePosition();
+      });
+      this._resizeObserver.observe(haSidebar);
     }
   }
 
   /**
    * Cleanup observers and event listeners
+   * v2.9.28: Added ResizeObserver cleanup
    */
   _cleanupObservers() {
     if (this._drawerObserver) {
@@ -202,6 +220,12 @@ class HaAccessDenied extends LitElement {
     if (this._sidebarObserver) {
       this._sidebarObserver.disconnect();
       this._sidebarObserver = null;
+    }
+
+    // v2.9.28: Cleanup ResizeObserver
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
     }
 
     if (this._resizeHandler) {
