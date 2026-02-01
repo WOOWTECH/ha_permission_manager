@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.21 - Header title changed to "Permission Manager" / "權限管理"
+ * v2.9.22 - Fixed hamburger button, added sidebar width observer
  */
 import {
   LitElement,
@@ -51,6 +51,8 @@ class HaAccessDenied extends LitElement {
   constructor() {
     super();
     this.standalone = false;
+    this._drawerObserver = null;
+    this._resizeHandler = null;
   }
 
   get _i18n() {
@@ -58,11 +60,120 @@ class HaAccessDenied extends LitElement {
     return getI18n(lang);
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    if (this.standalone) {
+      this._setupSidebarObserver();
+    }
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._cleanupObservers();
+  }
+
+  /**
+   * Get ha-drawer element from Home Assistant's shadow DOM
+   */
+  _getHaDrawer() {
+    const haMain = document.querySelector("home-assistant");
+    const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+    return homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+  }
+
+  /**
+   * Toggle sidebar by directly manipulating ha-drawer's open state
+   */
   _toggleSidebar() {
-    this.dispatchEvent(new CustomEvent("hass-toggle-menu", {
-      bubbles: true,
-      composed: true
-    }));
+    const haDrawer = this._getHaDrawer();
+
+    if (haDrawer) {
+      // Toggle the drawer's open state
+      const isCurrentlyOpen = haDrawer.hasAttribute("open") || haDrawer.open === true;
+
+      if (isCurrentlyOpen) {
+        haDrawer.removeAttribute("open");
+        haDrawer.open = false;
+      } else {
+        haDrawer.setAttribute("open", "");
+        haDrawer.open = true;
+      }
+
+      // Update position after a short delay for transition
+      setTimeout(() => this._updatePosition(), 50);
+      setTimeout(() => this._updatePosition(), 300);
+      return;
+    }
+
+    // Fallback: dispatch event to home-assistant element
+    const haMain = document.querySelector("home-assistant");
+    if (haMain) {
+      haMain.dispatchEvent(new CustomEvent("hass-toggle-menu", {
+        bubbles: true,
+        composed: true
+      }));
+    }
+  }
+
+  /**
+   * Update component position based on sidebar width
+   */
+  _updatePosition() {
+    const haDrawer = this._getHaDrawer();
+    const haSidebar = haDrawer?.querySelector("ha-sidebar");
+    const width = haSidebar?.offsetWidth || 0;
+    this.style.left = width + "px";
+  }
+
+  /**
+   * Setup observers for sidebar width changes
+   */
+  _setupSidebarObserver() {
+    // Initial position update
+    requestAnimationFrame(() => this._updatePosition());
+
+    // Resize handler
+    this._resizeHandler = () => this._updatePosition();
+    window.addEventListener("resize", this._resizeHandler);
+
+    // Observe ha-drawer for attribute changes (open/close)
+    const haDrawer = this._getHaDrawer();
+    if (haDrawer) {
+      this._drawerObserver = new MutationObserver(() => {
+        this._updatePosition();
+        // Also update after transition completes
+        setTimeout(() => this._updatePosition(), 300);
+      });
+
+      this._drawerObserver.observe(haDrawer, {
+        attributes: true,
+        attributeFilter: ["open", "narrow"]
+      });
+
+      // Listen for transition end events
+      haDrawer.addEventListener("transitionend", this._resizeHandler);
+    }
+  }
+
+  /**
+   * Cleanup observers and event listeners
+   */
+  _cleanupObservers() {
+    if (this._drawerObserver) {
+      this._drawerObserver.disconnect();
+      this._drawerObserver = null;
+    }
+
+    if (this._resizeHandler) {
+      window.removeEventListener("resize", this._resizeHandler);
+
+      const haDrawer = this._getHaDrawer();
+      if (haDrawer) {
+        haDrawer.removeEventListener("transitionend", this._resizeHandler);
+      }
+
+      this._resizeHandler = null;
+    }
   }
 
   static get styles() {
