@@ -405,6 +405,6 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
 
     # Register sidebar filter as extra JS (runs on every page)
     # Use version query param for cache busting
-    add_extra_js_url(hass, "/local/ha_sidebar_filter.js?v=2.9.1")
+    add_extra_js_url(hass, f"/local/ha_sidebar_filter.js?v={PANEL_VERSION}")
 
     _LOGGER.debug("Frontend panel registered")
