@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.20 - Added standalone mode with built-in header for hamburger menu
+ * v2.9.21 - Header title changed to "Permission Manager" / "權限管理"
  */
 import {
   LitElement,
@@ -13,18 +13,21 @@ import {
 const I18N = {
   en: {
     accessDenied: "Access Denied",
+    panelTitle: "Permission Manager",
     message: "You don't have permission to view this panel.",
     contact: "Contact your administrator if you believe this is an error.",
     menu: "Menu",
   },
   "zh-Hans": {
     accessDenied: "访问被拒绝",
+    panelTitle: "权限管理",
     message: "您没有权限查看此面板。",
     contact: "如果您认为这是一个错误，请联系您的管理员。",
     menu: "菜单",
   },
   "zh-Hant": {
     accessDenied: "存取被拒絕",
+    panelTitle: "權限管理",
     message: "您沒有權限檢視此面板。",
     contact: "如果您認為這是一個錯誤，請聯繫您的管理員。",
     menu: "選單",
@@ -233,7 +236,7 @@ class HaAccessDenied extends LitElement {
             <path fill="currentColor" d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"/>
           </svg>
         </button>
-        <h1 class="header-title">${i18n.accessDenied}</h1>
+        <h1 class="header-title">${i18n.panelTitle}</h1>
       </div>
 
       <!-- Main content -->

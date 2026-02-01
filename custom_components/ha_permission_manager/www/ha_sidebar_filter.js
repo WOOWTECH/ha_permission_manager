@@ -197,26 +197,31 @@
   function waitForPartialPanelResolver(maxWait = 5000) {
     return new Promise((resolve) => {
       const start = Date.now();
+      let resolved = false;
 
       function check() {
+        if (resolved) return;
+
         const haMain = document.querySelector("home-assistant");
         const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
         const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
         const resolver = haDrawer?.querySelector("partial-panel-resolver");
 
         if (resolver?.shadowRoot) {
+          resolved = true;
           console.log("[SidebarFilter] partial-panel-resolver ready after", Date.now() - start, "ms");
           resolve(resolver.shadowRoot);
           return;
         }
 
         if (Date.now() - start > maxWait) {
+          resolved = true;
           console.warn("[SidebarFilter] Timeout waiting for partial-panel-resolver");
           resolve(null);
           return;
         }
 
-        requestAnimationFrame(() => setTimeout(check, 50));
+        setTimeout(check, 100);
       }
 
       check();
@@ -228,7 +233,22 @@
    * Inserts into partial-panel-resolver to preserve native sidebar and header
    */
   async function showAccessDenied() {
-    if (document.querySelector("ha-access-denied")) return;
+    console.log("[SidebarFilter] showAccessDenied() called");
+
+    // 1. 檢查是否已經存在（body 和 Shadow DOM）
+    if (document.querySelector("ha-access-denied")) {
+      console.log("[SidebarFilter] showAccessDenied: already exists in body, skipping");
+      return;
+    }
+
+    const haMain = document.querySelector("home-assistant");
+    const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+    const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+    const resolver = haDrawer?.querySelector("partial-panel-resolver");
+    if (resolver?.shadowRoot?.querySelector("ha-access-denied")) {
+      console.log("[SidebarFilter] showAccessDenied: already exists in resolver, skipping");
+      return;
+    }
 
     // 載入組件腳本
     if (!customElements.get("ha-access-denied")) {
@@ -238,14 +258,21 @@
       document.head.appendChild(script);
     }
 
+    console.log("[SidebarFilter] showAccessDenied: creating element and waiting for resolver...");
     const accessDenied = document.createElement("ha-access-denied");
-    const haMain = document.querySelector("home-assistant");
     if (haMain?.hass) {
       accessDenied.hass = haMain.hass;
     }
 
     // 等待 partial-panel-resolver 就緒
     const shadowRoot = await waitForPartialPanelResolver(5000);
+    console.log("[SidebarFilter] showAccessDenied: resolver wait complete, shadowRoot =", !!shadowRoot);
+
+    // 再次檢查是否已經存在（避免競態條件）
+    if (document.querySelector("ha-access-denied")) {
+      console.log("[SidebarFilter] showAccessDenied: already exists after wait, skipping");
+      return;
+    }
 
     if (shadowRoot) {
       // 隱藏現有面板
@@ -262,15 +289,13 @@
       return;
     }
 
-    // 回退：使用 standalone 模式（組件自帶頂部欄）
+    // 回退：使用 standalone 模式（組件自帶頂部欄和漢堡按鈕）
     console.warn("[SidebarFilter] Fallback: using standalone mode with built-in header");
     accessDenied.setAttribute("standalone", "true");
 
     // 計算側邊欄寬度
     let sidebarWidth = 0;
     try {
-      const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
-      const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
       const haSidebar = haDrawer?.querySelector("ha-sidebar");
 
       if (haSidebar) {
@@ -283,7 +308,7 @@
       console.warn("[SidebarFilter] Could not detect sidebar width:", e);
     }
 
-    // standalone 模式：top 從 0 開始（組件自己渲染頂部欄）
+    // standalone 模式：從頂部開始，組件自己渲染頂部欄
     accessDenied.style.cssText = `
       position: fixed;
       top: 0;
@@ -296,13 +321,16 @@
     `;
     document.body.appendChild(accessDenied);
 
-    // 隱藏原有面板內容
+    // 隱藏原有面板內容（包括原生頂部欄）
     try {
-      const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
-      const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
       const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
       if (partialPanelResolver) {
         partialPanelResolver.style.visibility = 'hidden';
+      }
+      // 隱藏 HA 原生頂部欄以避免雙頂部欄
+      const appHeader = homeAssistantMain?.shadowRoot?.querySelector("app-header, ha-app-layout");
+      if (appHeader) {
+        appHeader.style.display = 'none';
       }
     } catch (e) {
       // ignore
