@@ -49,7 +49,7 @@ PANEL_TITLE = "Permission Manager"
 PANEL_TITLE_ZH = "權限管理"
 PANEL_ICON = "mdi:shield-lock"
 PANEL_URL = "ha_permission_manager"
-PANEL_VERSION = "2.9.19"
+PANEL_VERSION = "2.9.20"
 
 
 def sanitize_slug(name: str) -> str:

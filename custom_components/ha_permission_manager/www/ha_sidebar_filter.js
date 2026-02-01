@@ -192,10 +192,42 @@
   }
 
   /**
+   * Wait for partial-panel-resolver's shadowRoot to be ready
+   */
+  function waitForPartialPanelResolver(maxWait = 5000) {
+    return new Promise((resolve) => {
+      const start = Date.now();
+
+      function check() {
+        const haMain = document.querySelector("home-assistant");
+        const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+        const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+        const resolver = haDrawer?.querySelector("partial-panel-resolver");
+
+        if (resolver?.shadowRoot) {
+          console.log("[SidebarFilter] partial-panel-resolver ready after", Date.now() - start, "ms");
+          resolve(resolver.shadowRoot);
+          return;
+        }
+
+        if (Date.now() - start > maxWait) {
+          console.warn("[SidebarFilter] Timeout waiting for partial-panel-resolver");
+          resolve(null);
+          return;
+        }
+
+        requestAnimationFrame(() => setTimeout(check, 50));
+      }
+
+      check();
+    });
+  }
+
+  /**
    * Show access denied page
    * Inserts into partial-panel-resolver to preserve native sidebar and header
    */
-  function showAccessDenied() {
+  async function showAccessDenied() {
     if (document.querySelector("ha-access-denied")) return;
 
     // 載入組件腳本
@@ -212,32 +244,29 @@
       accessDenied.hass = haMain.hass;
     }
 
-    // 嘗試插入到 partial-panel-resolver 內部（保留原生側邊欄和頂部欄）
-    try {
-      const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
-      const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
-      const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
+    // 等待 partial-panel-resolver 就緒
+    const shadowRoot = await waitForPartialPanelResolver(5000);
 
-      if (partialPanelResolver?.shadowRoot) {
-        // 隱藏現有面板
-        const panels = partialPanelResolver.shadowRoot.querySelectorAll(':scope > *');
-        panels.forEach(p => {
-          if (p.tagName !== 'HA-ACCESS-DENIED' && p.tagName !== 'STYLE') {
-            p.style.display = 'none';
-          }
-        });
+    if (shadowRoot) {
+      // 隱藏現有面板
+      const panels = shadowRoot.querySelectorAll(':scope > *');
+      panels.forEach(p => {
+        if (p.tagName !== 'HA-ACCESS-DENIED' && p.tagName !== 'STYLE') {
+          p.style.display = 'none';
+        }
+      });
 
-        // 插入 Access Denied
-        partialPanelResolver.shadowRoot.appendChild(accessDenied);
-        console.log("[SidebarFilter] Access denied inserted into panel container (native sidebar preserved)");
-        return;
-      }
-    } catch (err) {
-      console.warn("[SidebarFilter] Could not find panel container:", err);
+      // 插入 Access Denied
+      shadowRoot.appendChild(accessDenied);
+      console.log("[SidebarFilter] Access denied inserted into panel container (native sidebar preserved)");
+      return;
     }
 
-    // 回退：overlay 避開頂部欄和側邊欄
-    // 使用 offsetWidth 獲取側邊欄實際渲染寬度（隱藏時為 0）
+    // 回退：使用 standalone 模式（組件自帶頂部欄）
+    console.warn("[SidebarFilter] Fallback: using standalone mode with built-in header");
+    accessDenied.setAttribute("standalone", "true");
+
+    // 計算側邊欄寬度
     let sidebarWidth = 0;
     try {
       const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
@@ -245,7 +274,6 @@
       const haSidebar = haDrawer?.querySelector("ha-sidebar");
 
       if (haSidebar) {
-        // offsetWidth 返回實際渲染寬度，隱藏時為 0
         const actualWidth = haSidebar.offsetWidth;
         if (actualWidth > 0) {
           sidebarWidth = actualWidth;
@@ -255,9 +283,10 @@
       console.warn("[SidebarFilter] Could not detect sidebar width:", e);
     }
 
+    // standalone 模式：top 從 0 開始（組件自己渲染頂部欄）
     accessDenied.style.cssText = `
       position: fixed;
-      top: var(--header-height, 56px);
+      top: 0;
       left: ${sidebarWidth}px;
       right: 0;
       bottom: 0;
@@ -267,7 +296,7 @@
     `;
     document.body.appendChild(accessDenied);
 
-    // 隱藏原有面板內容，防止滾動時顯示
+    // 隱藏原有面板內容
     try {
       const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
       const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
@@ -279,7 +308,7 @@
       // ignore
     }
 
-    console.log("[SidebarFilter] Access denied overlay mounted (fallback, sidebar width: " + sidebarWidth + "px)");
+    console.log("[SidebarFilter] Access denied overlay mounted (standalone mode, sidebar width: " + sidebarWidth + "px)");
   }
 
   /**
