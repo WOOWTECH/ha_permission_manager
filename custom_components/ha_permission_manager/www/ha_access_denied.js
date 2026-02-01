@@ -51,31 +51,10 @@ class HaAccessDenied extends LitElement {
   }
 
   _handleReturnHome() {
-    // Use HA internal navigation to stay within Android app WebView
-    const targetPath = "/profile/general";
-
-    // Method 1: Try HA's navigate function if available
-    const ha = document.querySelector("home-assistant");
-    if (ha?.hass?.navigate) {
-      console.log("[AccessDenied] Using hass.navigate()");
-      ha.hass.navigate(targetPath);
-      return;
-    }
-
-    // Method 2: Use history API + location-changed event (HA's internal router)
-    console.log("[AccessDenied] Using history.pushState + location-changed event");
-    history.pushState(null, "", targetPath);
-    window.dispatchEvent(new CustomEvent("location-changed", {
-      detail: { location: window.location }
-    }));
-
-    // Method 3: Fallback - if still on same page after 200ms, force reload
-    setTimeout(() => {
-      if (window.location.pathname !== targetPath) {
-        console.log("[AccessDenied] Fallback: using location.replace()");
-        window.location.replace(targetPath);
-      }
-    }, 200);
+    // For Android App WebView compatibility, use direct location.href
+    // This forces a full page reload which works reliably in all environments
+    console.log("[AccessDenied] Navigating to /profile/general");
+    window.location.href = "/profile/general";
   }
 
   static get styles() {

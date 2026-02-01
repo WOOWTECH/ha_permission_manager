@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.7 - Added debug logs for sidebar title i18n, improved internal navigation
+ * v2.9.8 - Fixed sidebar title i18n with retry mechanism, simplified navigation
  */
 (function() {
   "use strict";
@@ -338,84 +338,82 @@
 
   /**
    * Update sidebar title based on current language
+   * Returns true if successfully updated, false otherwise
    */
   function updateSidebarTitle() {
     const hass = document.querySelector("home-assistant")?.hass;
     if (!hass) {
-      console.log("[SidebarFilter] updateSidebarTitle: no hass object");
-      return;
+      return false;
     }
 
     const lang = hass.language || "en";
-
-    // Skip if language hasn't changed
-    if (lang === lastLanguage) return;
-    lastLanguage = lang;
-
     const title = lang.startsWith("zh") ? SIDEBAR_TITLES.zh : SIDEBAR_TITLES.en;
-    console.log("[SidebarFilter] Language changed to:", lang, "-> title:", title);
 
     // Traverse Shadow DOM to find sidebar items
     const haMain = document.querySelector("home-assistant");
-    if (!haMain?.shadowRoot) {
-      console.log("[SidebarFilter] No haMain.shadowRoot");
-      return;
-    }
+    if (!haMain?.shadowRoot) return false;
 
     const homeAssistantMain = haMain.shadowRoot.querySelector("home-assistant-main");
-    if (!homeAssistantMain?.shadowRoot) {
-      console.log("[SidebarFilter] No homeAssistantMain.shadowRoot");
-      return;
-    }
+    if (!homeAssistantMain?.shadowRoot) return false;
 
     const haDrawer = homeAssistantMain.shadowRoot.querySelector("ha-drawer");
-    if (!haDrawer) {
-      console.log("[SidebarFilter] No haDrawer");
-      return;
-    }
+    if (!haDrawer) return false;
 
     // Try shadowRoot first, then direct query (HA version differences)
     let haSidebar = haDrawer.shadowRoot?.querySelector("ha-sidebar");
     if (!haSidebar) {
       haSidebar = haDrawer.querySelector("ha-sidebar");
-      console.log("[SidebarFilter] Found ha-sidebar via direct query");
     }
-    if (!haSidebar?.shadowRoot) {
-      console.log("[SidebarFilter] No haSidebar or haSidebar.shadowRoot");
-      return;
-    }
+    if (!haSidebar?.shadowRoot) return false;
 
     // Find the sidebar navigation items
     const paperListbox = haSidebar.shadowRoot.querySelector("paper-listbox");
-    if (!paperListbox) {
-      console.log("[SidebarFilter] No paperListbox in ha-sidebar");
-      return;
-    }
+    if (!paperListbox) return false;
 
     const items = paperListbox.querySelectorAll("a");
-    console.log("[SidebarFilter] Found", items.length, "sidebar items");
+    let updated = false;
 
-    let found = false;
     items.forEach(item => {
       const href = item.getAttribute("href");
       if (href === "/ha_permission_manager") {
-        found = true;
         const textSpan = item.querySelector(".item-text");
-        if (textSpan) {
-          console.log("[SidebarFilter] Current text:", textSpan.textContent, "-> target:", title);
-          if (textSpan.textContent !== title) {
-            textSpan.textContent = title;
-            console.log("[SidebarFilter] ✓ Updated sidebar title to:", title);
-          }
-        } else {
-          console.log("[SidebarFilter] No .item-text span found in permission manager link");
+        if (textSpan && textSpan.textContent !== title) {
+          textSpan.textContent = title;
+          console.log("[SidebarFilter] ✓ Updated sidebar title to:", title);
+          updated = true;
+        } else if (textSpan && textSpan.textContent === title) {
+          updated = true; // Already correct
         }
       }
     });
 
-    if (!found) {
-      console.log("[SidebarFilter] Permission Manager link not found in sidebar");
+    return updated;
+  }
+
+  /**
+   * Initialize sidebar title with retry mechanism
+   */
+  function initSidebarTitle() {
+    let attempts = 0;
+    const maxAttempts = 30;
+
+    // Try immediately
+    if (updateSidebarTitle()) {
+      console.log("[SidebarFilter] Sidebar title updated on first attempt");
+      return;
     }
+
+    // Retry every 2 seconds until successful
+    const interval = setInterval(() => {
+      attempts++;
+      if (updateSidebarTitle()) {
+        console.log("[SidebarFilter] Sidebar title updated after", attempts, "attempts");
+        clearInterval(interval);
+      } else if (attempts >= maxAttempts) {
+        console.log("[SidebarFilter] Sidebar title update failed after", maxAttempts, "attempts");
+        clearInterval(interval);
+      }
+    }, 2000);
   }
 
   /**
@@ -455,13 +453,8 @@
     await subscribeToChanges();
     await checkCurrentPanelAccess();
 
-    // Update sidebar title based on language
-    updateSidebarTitle();
-
-    // Watch for language changes by polling (HA doesn't fire events for language changes)
-    setInterval(() => {
-      updateSidebarTitle();
-    }, 2000);
+    // Initialize sidebar title with retry mechanism
+    initSidebarTitle();
 
     console.log("[SidebarFilter] Initialization complete");
   }
@@ -478,7 +471,8 @@
   window.__permissionManagerSidebar = {
     refresh: applySidebarFilter,
     getOriginalPanels: () => originalPanels,
-    getState: () => ({ isAdmin, currentUserId, initialized, lastLanguage }),
+    getState: () => ({ isAdmin, currentUserId, initialized }),
     updateSidebarTitle: updateSidebarTitle,
+    initSidebarTitle: initSidebarTitle,
   };
 })();
