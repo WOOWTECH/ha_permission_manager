@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.14 - Uses native HA sidebar (no custom sidebar)
+ * v2.9.16 - Uses native HA sidebar, removed "Go to Profile" button
  */
 import {
   LitElement,
@@ -14,19 +14,16 @@ const I18N = {
   en: {
     accessDenied: "Access Denied",
     message: "You don't have permission to view this panel.",
-    returnHome: "Go to Profile",
     contact: "Contact your administrator if you believe this is an error.",
   },
   "zh-Hans": {
     accessDenied: "访问被拒绝",
     message: "您没有权限查看此面板。",
-    returnHome: "前往個人設定",
     contact: "如果您认为这是一个错误，请联系您的管理员。",
   },
   "zh-Hant": {
     accessDenied: "存取被拒絕",
     message: "您沒有權限檢視此面板。",
-    returnHome: "前往個人設定",
     contact: "如果您認為這是一個錯誤，請聯繫您的管理員。",
   },
 };
@@ -41,19 +38,12 @@ class HaAccessDenied extends LitElement {
   static get properties() {
     return {
       hass: { type: Object },
-      narrow: { type: Boolean },
-      panel: { type: Object },
     };
   }
 
   get _i18n() {
     const lang = this.hass?.language || "en";
     return getI18n(lang);
-  }
-
-  _handleReturnHome() {
-    console.log("[AccessDenied] Navigating to /profile/general");
-    window.location.href = "/profile/general";
   }
 
   static get styles() {
@@ -100,32 +90,7 @@ class HaAccessDenied extends LitElement {
       .contact {
         font-size: 14px;
         color: var(--secondary-text-color, #757575);
-        margin-bottom: 32px;
         line-height: 1.5;
-      }
-
-      button.action-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 12px 24px;
-        background: var(--primary-color, #03a9f4);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background 0.2s;
-      }
-
-      button.action-btn:hover {
-        background: var(--dark-primary-color, #0288d1);
-      }
-
-      button.action-btn:focus {
-        outline: 2px solid var(--primary-color, #03a9f4);
-        outline-offset: 2px;
       }
     `;
   }
@@ -139,10 +104,6 @@ class HaAccessDenied extends LitElement {
         <h1>${i18n.accessDenied}</h1>
         <p class="message">${i18n.message}</p>
         <p class="contact">${i18n.contact}</p>
-        <button class="action-btn" @click=${this._handleReturnHome}>
-          <ha-icon icon="mdi:account-cog"></ha-icon>
-          ${i18n.returnHome}
-        </button>
       </div>
     `;
   }

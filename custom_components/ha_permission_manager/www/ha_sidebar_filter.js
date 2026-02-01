@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.15 - Use overlay approach for Access Denied to preserve native sidebar
+ * v2.9.16 - Insert Access Denied into partial-panel-resolver to preserve native sidebar
  */
 (function() {
   "use strict";
@@ -193,16 +193,10 @@
 
   /**
    * Show access denied page
-   * Uses overlay approach to preserve native sidebar
+   * Inserts into partial-panel-resolver to preserve native sidebar and header
    */
   function showAccessDenied() {
     if (document.querySelector("ha-access-denied")) return;
-
-    const accessDenied = document.createElement("ha-access-denied");
-    const haMain = document.querySelector("home-assistant");
-    if (haMain && haMain.hass) {
-      accessDenied.hass = haMain.hass;
-    }
 
     // 載入組件腳本
     if (!customElements.get("ha-access-denied")) {
@@ -212,19 +206,48 @@
       document.head.appendChild(script);
     }
 
-    // 使用 overlay 方式疊加在最上層，保留原生側邊欄
+    const accessDenied = document.createElement("ha-access-denied");
+    const haMain = document.querySelector("home-assistant");
+    if (haMain?.hass) {
+      accessDenied.hass = haMain.hass;
+    }
+
+    // 嘗試插入到 partial-panel-resolver 內部（保留原生側邊欄和頂部欄）
+    try {
+      const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+      const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+      const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
+
+      if (partialPanelResolver?.shadowRoot) {
+        // 隱藏現有面板
+        const panels = partialPanelResolver.shadowRoot.querySelectorAll(':scope > *');
+        panels.forEach(p => {
+          if (p.tagName !== 'HA-ACCESS-DENIED' && p.tagName !== 'STYLE') {
+            p.style.display = 'none';
+          }
+        });
+
+        // 插入 Access Denied
+        partialPanelResolver.shadowRoot.appendChild(accessDenied);
+        console.log("[SidebarFilter] Access denied inserted into panel container (native sidebar preserved)");
+        return;
+      }
+    } catch (err) {
+      console.warn("[SidebarFilter] Could not find panel container:", err);
+    }
+
+    // 回退：overlay 避開頂部欄
     accessDenied.style.cssText = `
       position: fixed;
-      top: 0;
+      top: var(--header-height, 56px);
       left: 0;
       right: 0;
       bottom: 0;
-      z-index: 100;
+      z-index: 50;
       background: var(--primary-background-color, #fafafa);
     `;
-
     document.body.appendChild(accessDenied);
-    console.log("[SidebarFilter] Access denied overlay mounted (native sidebar preserved)");
+    console.log("[SidebarFilter] Access denied overlay mounted (fallback)");
   }
 
   /**
