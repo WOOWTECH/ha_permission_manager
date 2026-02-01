@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.28 - Fixed hamburger button mode detection, added ResizeObserver
+ * v2.9.30 - Fixed sidebar toggle using hass-toggle-menu event
  */
 import {
   LitElement,
@@ -84,9 +84,9 @@ class HaAccessDenied extends LitElement {
   }
 
   /**
-   * Toggle sidebar using direct DOM manipulation
-   * v2.9.25: Changed from event dispatch to direct property manipulation
-   * v2.9.28: Improved mode detection with window.innerWidth fallback
+   * Toggle sidebar using hass-toggle-menu event
+   * v2.9.30: Use the same event that HA native hamburger button uses
+   * This works for both desktop (expand/collapse) and mobile (drawer open/close)
    */
   _toggleSidebar() {
     console.log("[AccessDenied] _toggleSidebar() called");
@@ -94,47 +94,20 @@ class HaAccessDenied extends LitElement {
     const haDrawer = this._getHaDrawer();
     const haSidebar = haDrawer?.querySelector("ha-sidebar");
 
-    if (!haDrawer) {
-      console.warn("[AccessDenied] ha-drawer not found");
+    if (!haSidebar) {
+      console.warn("[AccessDenied] ha-sidebar not found");
       return;
     }
 
-    // Check current state - desktop mode uses 'expanded', mobile uses 'open'
-    // v2.9.28: Added window.innerWidth < 870 as fallback (HA's narrow breakpoint)
-    const isNarrow = haDrawer.narrow ||
-                     haDrawer.hasAttribute("narrow") ||
-                     window.innerWidth < 870;
+    const currentWidth = haSidebar.offsetWidth;
+    console.log("[AccessDenied] Dispatching hass-toggle-menu, current sidebarWidth=" + currentWidth);
 
-    console.log("[AccessDenied] isNarrow=" + isNarrow + ", window.innerWidth=" + window.innerWidth);
-
-    if (isNarrow) {
-      // Mobile/tablet mode: toggle the drawer's 'open' property
-      const isOpen = haDrawer.open || haDrawer.hasAttribute("open");
-      console.log("[AccessDenied] Mobile mode, isOpen=" + isOpen);
-
-      haDrawer.open = !isOpen;
-      if (isOpen) {
-        haDrawer.removeAttribute("open");
-      } else {
-        haDrawer.setAttribute("open", "");
-      }
-    } else {
-      // Desktop mode: toggle the sidebar's 'expanded' property
-      if (haSidebar) {
-        // v2.9.28: Improved expanded detection - check attribute and width
-        const isExpanded = haSidebar.hasAttribute("expanded") ||
-                           haSidebar.expanded === true ||
-                           haSidebar.offsetWidth > 100;
-        console.log("[AccessDenied] Desktop mode, isExpanded=" + isExpanded + ", sidebarWidth=" + haSidebar.offsetWidth);
-
-        haSidebar.expanded = !isExpanded;
-        if (isExpanded) {
-          haSidebar.removeAttribute("expanded");
-        } else {
-          haSidebar.setAttribute("expanded", "");
-        }
-      }
-    }
+    // Dispatch the same event that HA native hamburger button uses
+    // This event is handled by home-assistant-main and properly toggles the sidebar
+    haSidebar.dispatchEvent(new CustomEvent('hass-toggle-menu', {
+      bubbles: true,
+      composed: true
+    }));
 
     // Update position after transitions
     setTimeout(() => this._updatePosition(), 50);
