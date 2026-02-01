@@ -12,27 +12,26 @@ import {
 
 // Inlined shared styles for HA panel compatibility
 const sharedStylesLit = `
-  /* TOP BAR - follows HA dark/light mode */
+  /* TOP BAR - follows HA native theme */
   .top-bar {
     display: flex;
     align-items: center;
-    height: var(--header-height, 56px);
+    height: 56px;
     padding: 0 16px;
-    background: var(--app-header-background-color, var(--primary-background-color));
-    color: var(--app-header-text-color, var(--primary-text-color));
+    background: var(--app-header-background-color, var(--primary-color));
+    color: var(--app-header-text-color, var(--text-primary-color, white));
     position: sticky;
     top: 0;
     z-index: 100;
     gap: 12px;
     margin: -16px -16px 16px -16px;
-    border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.12));
   }
   .top-bar-sidebar-btn {
     width: 40px;
     height: 40px;
     border: none;
     background: transparent;
-    color: var(--app-header-text-color, var(--primary-text-color));
+    color: inherit;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -41,16 +40,17 @@ const sharedStylesLit = `
     transition: background 0.2s;
     flex-shrink: 0;
   }
-  .top-bar-sidebar-btn:hover { background: var(--secondary-background-color, rgba(0, 0, 0, 0.1)); }
+  .top-bar-sidebar-btn:hover { background: rgba(255, 255, 255, 0.1); }
   .top-bar-sidebar-btn svg { width: 24px; height: 24px; }
   .top-bar-title {
     flex: 1;
     font-size: 20px;
-    font-weight: 400;
+    font-weight: 500;
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    color: inherit;
   }
   .top-bar-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .top-bar-action-btn {
@@ -58,7 +58,7 @@ const sharedStylesLit = `
     height: 40px;
     border: none;
     background: transparent;
-    color: var(--app-header-text-color, var(--primary-text-color));
+    color: inherit;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -66,7 +66,7 @@ const sharedStylesLit = `
     border-radius: 50%;
     transition: background 0.2s;
   }
-  .top-bar-action-btn:hover { background: var(--secondary-background-color, rgba(0, 0, 0, 0.1)); }
+  .top-bar-action-btn:hover { background: rgba(255, 255, 255, 0.1); }
   .top-bar-action-btn svg { width: 24px; height: 24px; }
 
   /* SEARCH ROW */
@@ -513,17 +513,16 @@ class HaPermissionManager extends LitElement {
         display: flex;
         align-items: center;
         gap: 6px;
-        background: var(--secondary-background-color, rgba(0, 0, 0, 0.05));
+        background: rgba(255, 255, 255, 0.2);
         padding: 4px 10px;
         border-radius: 12px;
         font-size: 12px;
         font-weight: 500;
-        color: var(--secondary-text-color, #757575);
+        color: white;
       }
 
       .stat-chip ha-icon {
         --mdc-icon-size: 16px;
-        color: var(--secondary-text-color, #757575);
       }
 
       .content {
@@ -711,7 +710,7 @@ class HaPermissionManager extends LitElement {
         border-radius: 8px;
         font-size: 13px;
         font-weight: 500;
-        background: white;
+        background: var(--card-background-color, white);
         cursor: pointer;
         min-width: 100px;
         color: var(--primary-text-color, #212121);
@@ -737,7 +736,7 @@ class HaPermissionManager extends LitElement {
         height: 0;
         border-left: 5px solid transparent;
         border-right: 5px solid transparent;
-        border-top: 5px solid #666;
+        border-top: 5px solid var(--secondary-text-color, #666);
         pointer-events: none;
       }
 
@@ -846,6 +845,83 @@ class HaPermissionManager extends LitElement {
 
         th, td {
           padding: 10px 12px;
+        }
+      }
+
+      /* Mobile responsive styles */
+      @media (max-width: 600px) {
+        .top-bar {
+          height: 48px;
+          padding: 0 8px;
+        }
+        .top-bar-title {
+          font-size: 16px;
+        }
+        .top-bar-sidebar-btn,
+        .top-bar-action-btn {
+          width: 36px;
+          height: 36px;
+        }
+        .permission-select select {
+          min-width: 70px;
+          padding: 6px 24px 6px 8px;
+          font-size: 12px;
+        }
+        .permission-select::after {
+          right: 8px;
+          border-left: 4px solid transparent;
+          border-right: 4px solid transparent;
+          border-top: 4px solid var(--secondary-text-color, #666);
+        }
+        .permission-table-wrapper {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        .tab {
+          padding: 8px 12px;
+          font-size: 12px;
+        }
+        .tabs {
+          gap: 4px;
+        }
+        .legend {
+          gap: 12px;
+          padding: 12px;
+        }
+        .legend-item {
+          font-size: 11px;
+        }
+        .search-row {
+          padding: 0 8px;
+        }
+        .card {
+          border-radius: 8px;
+        }
+      }
+
+      /* Small phone responsive styles */
+      @media (max-width: 400px) {
+        .user-cell {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+        }
+        .user-avatar {
+          width: 28px;
+          height: 28px;
+          font-size: 12px;
+        }
+        .user-info {
+          font-size: 13px;
+        }
+        .permission-select select {
+          min-width: 60px;
+          font-size: 11px;
+        }
+        .legend {
+          flex-direction: column;
+          gap: 8px;
+          align-items: flex-start;
         }
       }
     `;

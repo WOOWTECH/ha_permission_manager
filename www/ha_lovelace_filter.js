@@ -83,10 +83,10 @@
       return true;
     }
 
-    // No permissions loaded yet - default to show
+    // No permissions loaded yet - fail-secure: hide content
     if (!permissions) {
-      console.log("[LovelaceFilter] No permissions loaded - show content");
-      return true;
+      console.log("[LovelaceFilter] No permissions loaded - hide content (fail-secure)");
+      return false;
     }
 
     // Check lovelace panel permission specifically
@@ -127,9 +127,9 @@
       return true;
     }
 
-    // Default: show content
-    console.log("[LovelaceFilter] Default - show content");
-    return true;
+    // Default: fail-secure - hide content if no explicit lovelace permission found
+    console.log("[LovelaceFilter] No lovelace permission found - hide content (fail-secure)");
+    return false;
   }
 
   /**
@@ -190,7 +190,7 @@
       console.log("[LovelaceFilter] Hidden #view container");
     }
 
-    // Hide the toolbar action items (right side buttons including ⋮ menu)
+    // Hide the toolbar action items (right side buttons including ... menu)
     const toolbar = huiRoot.shadowRoot.querySelector(".toolbar");
     if (toolbar) {
       // Hide all action items in the toolbar
@@ -316,9 +316,10 @@
     const hass = await waitForHass();
     if (!hass || !hass.connection) return;
 
+    // Entity IDs can be select.perm_* or select.permission_manager_*
     hass.connection.subscribeEvents(async (event) => {
       const entityId = event.data?.entity_id;
-      if (!entityId || !entityId.startsWith("select.perm_")) return;
+      if (!entityId || !(entityId.startsWith("select.perm_") || entityId.startsWith("select.permission_manager_"))) return;
 
       console.log("[LovelaceFilter] Permission changed, re-checking");
       await fetchAllPermissions();

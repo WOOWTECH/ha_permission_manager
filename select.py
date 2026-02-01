@@ -485,6 +485,10 @@ class PermissionSelectEntity(SelectEntity, RestoreEntity):
                 self._attr_current_option
             )
 
+        # Critical: Write state to ensure attributes are available in state machine
+        # Without this, hass.states.async_all() returns entities without attributes
+        self.async_write_ha_state()
+
     async def async_select_option(self, option: str) -> None:
         """Handle option selection."""
         if self._is_protected:

@@ -2,18 +2,25 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.0 - Auto-sync new dashboards, listen to lovelace_updated event
+ * v2.9.16 - Insert Access Denied into partial-panel-resolver to preserve native sidebar
  */
 (function() {
   "use strict";
 
   const PERM_DENY = 0;
 
+  // Sidebar title translations
+  const SIDEBAR_TITLES = {
+    en: "Permission Manager",
+    zh: "權限管理"
+  };
+
   // State
   let originalPanels = null;  // Stored once on first load
   let currentUserId = null;
   let isAdmin = false;
   let initialized = false;
+  let lastLanguage = null;
 
   /**
    * Wait for Home Assistant frontend to be ready
@@ -134,15 +141,15 @@
 
       const level = permissions[panelId];
 
-      // Only hide if explicitly set to 0
-      if (level === PERM_DENY) {
+      // Fail-secure: only show panels with explicit permission > 0
+      // Hide panels that are undefined or explicitly set to 0
+      if (level !== undefined && level > PERM_DENY) {
+        filteredPanels[panelId] = panel;
+      } else {
+        // undefined or 0 = hide
         hiddenPanels.push(panelId);
         hiddenCount++;
-        continue;
       }
-
-      // Show all other panels (including those without permission set)
-      filteredPanels[panelId] = panel;
     }
 
     // Apply filtered panels
@@ -152,9 +159,13 @@
 
   /**
    * Check current URL and block access if denied
+   * v2.9.26: Added hideAccessDenied() call when panel is accessible
    */
   async function checkCurrentPanelAccess() {
-    if (isAdmin) return;
+    if (isAdmin) {
+      hideAccessDenied(); // Admin 用戶，確保移除 Access Denied
+      return;
+    }
 
     const { permissions } = await fetchPermissions();
 
@@ -162,16 +173,21 @@
 
     // Handle root path as lovelace - always allow access (content will be filtered)
     if (path === "/" || path === "") {
+      hideAccessDenied();
       return;
     }
 
     const match = path.match(/^\/([^\/]+)/);
-    if (!match) return;
+    if (!match) {
+      hideAccessDenied();
+      return;
+    }
 
     const currentPanel = match[1];
 
     // Skip system paths and always-accessible panels
     if (["local", "api", "auth", "static", "frontend_latest", "frontend_es5", "_my_redirect", "profile"].includes(currentPanel)) {
+      hideAccessDenied();
       return;
     }
 
@@ -181,29 +197,124 @@
     if (permissions[panelToCheck] === PERM_DENY) {
       console.log("[SidebarFilter] Access denied for panel:", panelToCheck);
       showAccessDenied();
+    } else {
+      // 有權限，移除 Access Denied 並顯示原有內容
+      console.log("[SidebarFilter] Access granted for panel:", panelToCheck);
+      hideAccessDenied();
     }
   }
 
   /**
-   * Show access denied page
+   * Show access denied page - use standalone mode with header
+   * v2.9.27: Restored standalone mode with header and hamburger button
    */
   function showAccessDenied() {
-    if (document.querySelector("ha-access-denied")) return;
+    console.log("[SidebarFilter] showAccessDenied() called - v2.9.27");
 
-    const accessDenied = document.createElement("ha-access-denied");
-    const haMain = document.querySelector("home-assistant");
-    if (haMain && haMain.hass) {
-      accessDenied.hass = haMain.hass;
+    // 檢查是否已存在
+    if (document.querySelector("ha-access-denied")) {
+      console.log("[SidebarFilter] showAccessDenied: already exists, skipping");
+      return;
     }
 
-    document.body.innerHTML = "";
-    document.body.appendChild(accessDenied);
+    // 獲取 DOM 引用
+    const haMain = document.querySelector("home-assistant");
+    const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+    const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+    const haSidebar = haDrawer?.querySelector("ha-sidebar");
+    const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
 
+    console.log("[SidebarFilter] DOM check: haMain=" + !!haMain +
+      ", homeAssistantMain=" + !!homeAssistantMain +
+      ", haDrawer=" + !!haDrawer +
+      ", partialPanelResolver=" + !!partialPanelResolver);
+
+    // 載入組件腳本
     if (!customElements.get("ha-access-denied")) {
       const script = document.createElement("script");
       script.type = "module";
-      script.src = "/local/ha_access_denied.js?v=2.5.1&t=" + Date.now();
+      script.src = "/local/ha_access_denied.js?v=" + Date.now();
       document.head.appendChild(script);
+      console.log("[SidebarFilter] Loading ha_access_denied.js");
+    }
+
+    // 計算側邊欄寬度
+    const sidebarWidth = haSidebar?.offsetWidth || 0;
+
+    // 創建組件 - 使用 standalone 模式（含 header 和漢堡按鈕）
+    const accessDenied = document.createElement("ha-access-denied");
+    accessDenied.setAttribute("standalone", "true");
+    if (haMain?.hass) {
+      accessDenied.hass = haMain.hass;
+    }
+
+    // 定位組件（從側邊欄右邊開始，覆蓋主內容區域）
+    accessDenied.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: ${sidebarWidth}px;
+      right: 0;
+      bottom: 0;
+      z-index: 1;
+      background: var(--primary-background-color, #fafafa);
+      overflow: auto;
+    `;
+
+    document.body.appendChild(accessDenied);
+
+    // 隱藏原有面板內容
+    if (partialPanelResolver) {
+      partialPanelResolver.style.visibility = "hidden";
+    }
+
+    console.log("[SidebarFilter] ✓ Access denied displayed in standalone mode (sidebar width: " + sidebarWidth + "px)");
+  }
+
+  /**
+   * Hide access denied page and restore original panel content
+   * v2.9.27: Fixed - use removeProperty for more reliable restoration
+   */
+  function hideAccessDenied() {
+    console.log("[SidebarFilter] hideAccessDenied() called - v2.9.27");
+
+    // 獲取 DOM 引用
+    const haMain = document.querySelector("home-assistant");
+    const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+    const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+    const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
+
+    // 移除 partial-panel-resolver 中的 Access Denied
+    const accessDeniedInResolver = partialPanelResolver?.querySelector("ha-access-denied");
+    if (accessDeniedInResolver) {
+      accessDeniedInResolver.remove();
+      console.log("[SidebarFilter] Removed access denied from partial-panel-resolver");
+
+      // 恢復原有內容的顯示 - 使用 removeProperty 更可靠
+      if (partialPanelResolver) {
+        Array.from(partialPanelResolver.children).forEach(child => {
+          child.style.removeProperty("display");
+          child.style.removeProperty("visibility");
+        });
+        console.log("[SidebarFilter] Restored original panel content");
+      }
+    }
+
+    // 移除 document.body 中的 Access Denied (standalone 模式)
+    const accessDeniedInBody = document.querySelector("ha-access-denied");
+    if (accessDeniedInBody) {
+      accessDeniedInBody.remove();
+      console.log("[SidebarFilter] Removed access denied from document.body");
+
+      // 恢復 partial-panel-resolver 的可見性
+      if (partialPanelResolver) {
+        partialPanelResolver.style.removeProperty("visibility");
+        partialPanelResolver.style.removeProperty("display");
+        // 也恢復子元素的顯示
+        Array.from(partialPanelResolver.children).forEach(child => {
+          child.style.removeProperty("display");
+          child.style.removeProperty("visibility");
+        });
+      }
     }
   }
 
@@ -215,7 +326,7 @@
     if (!hass || !hass.connection) return;
 
     // Listen for permission entity changes
-    // Entity IDs can be either "select.perm_*" or "select.permission_manager_*" depending on HA version
+    // Entity IDs can be select.perm_* or select.permission_manager_*
     hass.connection.subscribeEvents(async (event) => {
       const entityId = event.data?.entity_id;
       if (!entityId || !(entityId.startsWith("select.perm_") || entityId.startsWith("select.permission_manager_"))) return;
@@ -326,7 +437,144 @@
       }
     }, 5000);
 
-    console.log("[SidebarFilter] Subscribed to changes (state_changed, user_updated, auth, lovelace_updated)");
+    // Listen for language changes via core_config_updated event
+    hass.connection.subscribeEvents(async (event) => {
+      console.log("[SidebarFilter] Core config updated event received");
+
+      // Get current language from hass object (more reliable than event data)
+      const haMain = document.querySelector("home-assistant");
+      const newLanguage = haMain?.hass?.language || "en";
+
+      // Skip if language hasn't changed
+      if (newLanguage === lastLanguage) {
+        return;
+      }
+
+      console.log("[SidebarFilter] Language changed:", lastLanguage, "->", newLanguage);
+      lastLanguage = newLanguage;
+
+      // Update sidebar title via DOM manipulation (more reliable than hass.panels)
+      updateSidebarTitle();
+    }, "core_config_updated");
+
+    console.log("[SidebarFilter] Subscribed to changes (state_changed, user_updated, auth, lovelace_updated, core_config_updated)");
+  }
+
+  /**
+   * Update sidebar title based on current language
+   * Returns true if successfully updated, false otherwise
+   */
+  function updateSidebarTitle() {
+    const hass = document.querySelector("home-assistant")?.hass;
+    if (!hass) {
+      return false;
+    }
+
+    const lang = hass.language || "en";
+    const title = lang.startsWith("zh") ? SIDEBAR_TITLES.zh : SIDEBAR_TITLES.en;
+
+    // Traverse Shadow DOM to find sidebar items
+    const haMain = document.querySelector("home-assistant");
+    if (!haMain?.shadowRoot) return false;
+
+    const homeAssistantMain = haMain.shadowRoot.querySelector("home-assistant-main");
+    if (!homeAssistantMain?.shadowRoot) return false;
+
+    const haDrawer = homeAssistantMain.shadowRoot.querySelector("ha-drawer");
+    if (!haDrawer) return false;
+
+    // Try shadowRoot first, then direct query (HA version differences)
+    let haSidebar = haDrawer.shadowRoot?.querySelector("ha-sidebar");
+    if (!haSidebar) {
+      haSidebar = haDrawer.querySelector("ha-sidebar");
+    }
+    if (!haSidebar?.shadowRoot) return false;
+
+    // Find the sidebar navigation items
+    const paperListbox = haSidebar.shadowRoot.querySelector("paper-listbox");
+    if (!paperListbox) return false;
+
+    const items = paperListbox.querySelectorAll("a");
+    let updated = false;
+
+    items.forEach(item => {
+      const href = item.getAttribute("href");
+      if (href === "/ha_permission_manager") {
+        const textSpan = item.querySelector(".item-text");
+        if (textSpan && textSpan.textContent !== title) {
+          textSpan.textContent = title;
+          console.log("[SidebarFilter] ✓ Updated sidebar title to:", title);
+          updated = true;
+        } else if (textSpan && textSpan.textContent === title) {
+          updated = true; // Already correct
+        }
+      }
+    });
+
+    return updated;
+  }
+
+  /**
+   * Update sidebar title by modifying hass.panels data model
+   * This triggers HA's reactive UI update automatically
+   */
+  function updateSidebarTitleViaHass(lang) {
+    const haMain = document.querySelector("home-assistant");
+    if (!haMain?.hass?.panels) {
+      console.log("[SidebarFilter] updateSidebarTitleViaHass: hass.panels not ready");
+      return false;
+    }
+
+    const panel = haMain.hass.panels.ha_permission_manager;
+    if (!panel) {
+      console.log("[SidebarFilter] updateSidebarTitleViaHass: panel not found");
+      return false;
+    }
+
+    const title = (lang && lang.startsWith("zh")) ? SIDEBAR_TITLES.zh : SIDEBAR_TITLES.en;
+
+    // Only update if title actually changed
+    if (panel.title === title) {
+      console.log("[SidebarFilter] Sidebar title already correct:", title);
+      return true;
+    }
+
+    // Update the panel data model - this triggers HA's reactive update
+    const updatedPanels = { ...haMain.hass.panels };
+    updatedPanels.ha_permission_manager = { ...panel, title: title };
+
+    // Trigger reactive update by assigning new hass object
+    haMain.hass = { ...haMain.hass, panels: updatedPanels };
+
+    console.log("[SidebarFilter] ✓ Updated sidebar title via hass.panels:", title);
+    return true;
+  }
+
+  /**
+   * Initialize sidebar title with retry mechanism
+   * Uses DOM manipulation directly (updateSidebarTitleViaHass doesn't work for title updates)
+   */
+  function initSidebarTitle() {
+    let attempts = 0;
+    const maxAttempts = 30;
+
+    // 嘗試立即更新（使用 DOM 操作）
+    if (updateSidebarTitle()) {
+      console.log("[SidebarFilter] Sidebar title updated on first attempt");
+      return;
+    }
+
+    // 重試機制
+    const interval = setInterval(() => {
+      attempts++;
+      if (updateSidebarTitle()) {
+        console.log("[SidebarFilter] Sidebar title updated after", attempts, "attempts");
+        clearInterval(interval);
+      } else if (attempts >= maxAttempts) {
+        console.log("[SidebarFilter] Sidebar title update failed after", maxAttempts, "attempts");
+        clearInterval(interval);
+      }
+    }, 2000);
   }
 
   /**
@@ -356,15 +604,27 @@
     if (initialized) return;
     initialized = true;
 
-    console.log("[SidebarFilter] Initializing v2.9.0");
+    console.log("[SidebarFilter] Initializing v2.9.9");
 
     // Wait a bit for HA to fully load
     await new Promise(r => setTimeout(r, 500));
+
+    // Initialize lastLanguage from current hass state
+    const hass = await waitForHass();
+    if (hass) {
+      lastLanguage = hass.language || "en";
+      console.log("[SidebarFilter] Initial language:", lastLanguage);
+    }
 
     await applySidebarFilter();
     watchNavigation();
     await subscribeToChanges();
     await checkCurrentPanelAccess();
+
+    // Initialize sidebar title - prefer hass.panels method, fallback to DOM
+    if (!updateSidebarTitleViaHass(lastLanguage)) {
+      initSidebarTitle(); // Fallback to DOM manipulation
+    }
 
     console.log("[SidebarFilter] Initialization complete");
   }
@@ -381,6 +641,9 @@
   window.__permissionManagerSidebar = {
     refresh: applySidebarFilter,
     getOriginalPanels: () => originalPanels,
-    getState: () => ({ isAdmin, currentUserId, initialized }),
+    getState: () => ({ isAdmin, currentUserId, initialized, lastLanguage }),
+    updateSidebarTitle: updateSidebarTitle,
+    updateSidebarTitleViaHass: updateSidebarTitleViaHass,
+    initSidebarTitle: initSidebarTitle,
   };
 })();

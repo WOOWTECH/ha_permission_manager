@@ -50,16 +50,40 @@ def ws_get_panel_permissions(
     permissions: dict[str, int] = {}
 
     # Find all panel permission entities for this user
-    # Entity IDs can be either "select.perm_*" or "select.permission_manager_*" depending on HA version
-    for entity in hass.states.async_all("select"):
-        if not (entity.entity_id.startswith("select.perm_") or entity.entity_id.startswith("select.permission_manager_")):
+    # Entity IDs can be:
+    # - select.perm_* (suggested object id format)
+    # - select.permission_manager_* (has_entity_name format)
+    all_select_entities = hass.states.async_all("select")
+    perm_entities_found = 0
+    matched_user = 0
+    matched_panel = 0
+
+    for entity in all_select_entities:
+        entity_id = entity.entity_id
+        if not (entity_id.startswith("select.perm_") or entity_id.startswith("select.permission_manager_")):
             continue
 
+        perm_entities_found += 1
         attrs = entity.attributes
-        if attrs.get("user_id") != user_id:
+
+        # Debug: Log first few entities to see what attributes are available
+        if perm_entities_found <= 3:
+            _LOGGER.warning(
+                "DEBUG: Entity %s attrs=%s",
+                entity_id,
+                dict(attrs) if attrs else "EMPTY"
+            )
+
+        entity_user_id = attrs.get("user_id")
+        if entity_user_id != user_id:
             continue
+
+        matched_user += 1
+
         if attrs.get("resource_type") != "panel":
             continue
+
+        matched_panel += 1
 
         # Extract panel_id from resource_id (strip prefix)
         resource_id = attrs.get("resource_id", "")
@@ -80,10 +104,13 @@ def ws_get_panel_permissions(
 
         permissions[panel_id] = level
 
-    _LOGGER.info(
-        "Panel permissions for user %s (is_admin=%s): %s",
+    _LOGGER.warning(
+        "Panel permissions for user %s (is_admin=%s): found=%d, matched_user=%d, matched_panel=%d, permissions=%s",
         user_id,
         is_admin,
+        perm_entities_found,
+        matched_user,
+        matched_panel,
         permissions,
     )
 
@@ -126,9 +153,12 @@ def ws_get_all_permissions(
     labels: dict[str, int] = {}
 
     # Find all permission entities for this user
-    # Entity IDs can be either "select.perm_*" or "select.permission_manager_*" depending on HA version
+    # Entity IDs can be:
+    # - select.perm_* (suggested object id format)
+    # - select.permission_manager_* (has_entity_name format)
     for entity in hass.states.async_all("select"):
-        if not (entity.entity_id.startswith("select.perm_") or entity.entity_id.startswith("select.permission_manager_")):
+        entity_id = entity.entity_id
+        if not (entity_id.startswith("select.perm_") or entity_id.startswith("select.permission_manager_")):
             continue
 
         attrs = entity.attributes
