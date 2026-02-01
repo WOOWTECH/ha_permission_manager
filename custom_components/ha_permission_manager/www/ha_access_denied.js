@@ -51,17 +51,17 @@ class HaAccessDenied extends LitElement {
   }
 
   _handleReturnHome() {
-    // Use anchor element click for HA internal navigation
-    // HA frontend intercepts anchor clicks and handles them via history API
-    // This works correctly in Android/iOS WebView apps (stays inside the app)
-    console.log("[AccessDenied] Navigating to /profile/general via anchor click");
+    // 直接跳轉模式 - 使用 window.location.href
+    console.log("[AccessDenied] Navigating to /profile/general");
+    window.location.href = "/profile/general";
+  }
 
-    const link = document.createElement("a");
-    link.href = "/profile/general";
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  _toggleSidebar() {
+    // 觸發 HA 的側邊欄開關事件
+    this.dispatchEvent(new CustomEvent("hass-toggle-menu", {
+      bubbles: true,
+      composed: true
+    }));
   }
 
   static get styles() {
@@ -76,7 +76,45 @@ class HaAccessDenied extends LitElement {
         font-family: var(--paper-font-body1_-_font-family, "Roboto", sans-serif);
         color: var(--primary-text-color, #212121);
         padding: 24px;
+        padding-top: 80px;
         box-sizing: border-box;
+      }
+
+      .top-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 56px;
+        display: flex;
+        align-items: center;
+        padding: 0 8px;
+        background: var(--app-header-background-color, var(--primary-color, #03a9f4));
+        color: var(--app-header-text-color, white);
+        z-index: 1;
+      }
+
+      .menu-btn {
+        width: 48px;
+        height: 48px;
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: background 0.2s;
+      }
+
+      .menu-btn:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+
+      .menu-btn svg {
+        width: 24px;
+        height: 24px;
       }
 
       .container {
@@ -111,7 +149,7 @@ class HaAccessDenied extends LitElement {
         line-height: 1.5;
       }
 
-      button {
+      button.action-btn {
         display: inline-flex;
         align-items: center;
         gap: 8px;
@@ -126,11 +164,11 @@ class HaAccessDenied extends LitElement {
         transition: background 0.2s;
       }
 
-      button:hover {
+      button.action-btn:hover {
         background: var(--dark-primary-color, #0288d1);
       }
 
-      button:focus {
+      button.action-btn:focus {
         outline: 2px solid var(--primary-color, #03a9f4);
         outline-offset: 2px;
       }
@@ -141,12 +179,17 @@ class HaAccessDenied extends LitElement {
     const i18n = this._i18n;
 
     return html`
+      <div class="top-bar">
+        <button class="menu-btn" @click=${this._toggleSidebar}>
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"/></svg>
+        </button>
+      </div>
       <div class="container">
         <ha-icon class="icon" icon="mdi:shield-lock"></ha-icon>
         <h1>${i18n.accessDenied}</h1>
         <p class="message">${i18n.message}</p>
         <p class="contact">${i18n.contact}</p>
-        <button @click=${this._handleReturnHome}>
+        <button class="action-btn" @click=${this._handleReturnHome}>
           <ha-icon icon="mdi:account-cog"></ha-icon>
           ${i18n.returnHome}
         </button>
