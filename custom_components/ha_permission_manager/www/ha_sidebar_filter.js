@@ -237,7 +237,7 @@
     }
 
     // 回退：overlay 避開頂部欄和側邊欄
-    // 檢測側邊欄是否固定顯示（桌面模式）
+    // 使用 offsetWidth 獲取側邊欄實際渲染寬度（隱藏時為 0）
     let sidebarWidth = 0;
     try {
       const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
@@ -245,13 +245,10 @@
       const haSidebar = haDrawer?.querySelector("ha-sidebar");
 
       if (haSidebar) {
-        const sidebarStyle = window.getComputedStyle(haSidebar);
-        // 檢查側邊欄是否可見（display 不是 none，且有寬度）
-        if (sidebarStyle.display !== 'none' && sidebarStyle.visibility !== 'hidden') {
-          const width = parseInt(sidebarStyle.width, 10);
-          if (width > 0) {
-            sidebarWidth = width;
-          }
+        // offsetWidth 返回實際渲染寬度，隱藏時為 0
+        const actualWidth = haSidebar.offsetWidth;
+        if (actualWidth > 0) {
+          sidebarWidth = actualWidth;
         }
       }
     } catch (e) {
@@ -264,10 +261,24 @@
       left: ${sidebarWidth}px;
       right: 0;
       bottom: 0;
-      z-index: 50;
+      z-index: 100;
       background: var(--primary-background-color, #fafafa);
+      overflow: auto;
     `;
     document.body.appendChild(accessDenied);
+
+    // 隱藏原有面板內容，防止滾動時顯示
+    try {
+      const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+      const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+      const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
+      if (partialPanelResolver) {
+        partialPanelResolver.style.visibility = 'hidden';
+      }
+    } catch (e) {
+      // ignore
+    }
+
     console.log("[SidebarFilter] Access denied overlay mounted (fallback, sidebar width: " + sidebarWidth + "px)");
   }
 
