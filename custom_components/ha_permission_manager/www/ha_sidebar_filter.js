@@ -2,18 +2,25 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.0 - Auto-sync new dashboards, listen to lovelace_updated event
+ * v2.9.1 - Added sidebar title i18n support
  */
 (function() {
   "use strict";
 
   const PERM_DENY = 0;
 
+  // Sidebar title translations
+  const SIDEBAR_TITLES = {
+    en: "Permission Manager",
+    zh: "權限管理"
+  };
+
   // State
   let originalPanels = null;  // Stored once on first load
   let currentUserId = null;
   let isAdmin = false;
   let initialized = false;
+  let lastLanguage = null;
 
   /**
    * Wait for Home Assistant frontend to be ready
@@ -330,6 +337,51 @@
   }
 
   /**
+   * Update sidebar title based on current language
+   */
+  function updateSidebarTitle() {
+    const hass = document.querySelector("home-assistant")?.hass;
+    if (!hass) return;
+
+    const lang = hass.language || "en";
+
+    // Skip if language hasn't changed
+    if (lang === lastLanguage) return;
+    lastLanguage = lang;
+
+    const title = lang.startsWith("zh") ? SIDEBAR_TITLES.zh : SIDEBAR_TITLES.en;
+
+    // Traverse Shadow DOM to find sidebar items
+    const haMain = document.querySelector("home-assistant");
+    if (!haMain?.shadowRoot) return;
+
+    const homeAssistantMain = haMain.shadowRoot.querySelector("home-assistant-main");
+    if (!homeAssistantMain?.shadowRoot) return;
+
+    const haDrawer = homeAssistantMain.shadowRoot.querySelector("ha-drawer");
+    if (!haDrawer) return;
+
+    const haSidebar = haDrawer.querySelector("ha-sidebar");
+    if (!haSidebar?.shadowRoot) return;
+
+    // Find the sidebar navigation items
+    const paperListbox = haSidebar.shadowRoot.querySelector("paper-listbox");
+    if (!paperListbox) return;
+
+    const items = paperListbox.querySelectorAll("a");
+    items.forEach(item => {
+      const href = item.getAttribute("href");
+      if (href === "/ha_permission_manager") {
+        const textSpan = item.querySelector(".item-text");
+        if (textSpan && textSpan.textContent !== title) {
+          textSpan.textContent = title;
+          console.log("[SidebarFilter] Updated sidebar title to:", title);
+        }
+      }
+    });
+  }
+
+  /**
    * Watch for navigation
    */
   function watchNavigation() {
@@ -356,7 +408,7 @@
     if (initialized) return;
     initialized = true;
 
-    console.log("[SidebarFilter] Initializing v2.9.0");
+    console.log("[SidebarFilter] Initializing v2.9.1");
 
     // Wait a bit for HA to fully load
     await new Promise(r => setTimeout(r, 500));
@@ -365,6 +417,14 @@
     watchNavigation();
     await subscribeToChanges();
     await checkCurrentPanelAccess();
+
+    // Update sidebar title based on language
+    updateSidebarTitle();
+
+    // Watch for language changes by polling (HA doesn't fire events for language changes)
+    setInterval(() => {
+      updateSidebarTitle();
+    }, 2000);
 
     console.log("[SidebarFilter] Initialization complete");
   }
@@ -381,6 +441,7 @@
   window.__permissionManagerSidebar = {
     refresh: applySidebarFilter,
     getOriginalPanels: () => originalPanels,
-    getState: () => ({ isAdmin, currentUserId, initialized }),
+    getState: () => ({ isAdmin, currentUserId, initialized, lastLanguage }),
+    updateSidebarTitle: updateSidebarTitle,
   };
 })();
