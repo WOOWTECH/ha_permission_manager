@@ -316,9 +316,10 @@
     const hass = await waitForHass();
     if (!hass || !hass.connection) return;
 
+    // Entity IDs can be select.perm_* or select.permission_manager_*
     hass.connection.subscribeEvents(async (event) => {
       const entityId = event.data?.entity_id;
-      if (!entityId || !entityId.startsWith("select.perm_")) return;
+      if (!entityId || !(entityId.startsWith("select.perm_") || entityId.startsWith("select.permission_manager_"))) return;
 
       console.log("[LovelaceFilter] Permission changed, re-checking");
       await fetchAllPermissions();

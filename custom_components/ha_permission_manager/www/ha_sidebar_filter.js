@@ -215,9 +215,10 @@
     if (!hass || !hass.connection) return;
 
     // Listen for permission entity changes
+    // Entity IDs can be select.perm_* or select.permission_manager_*
     hass.connection.subscribeEvents(async (event) => {
       const entityId = event.data?.entity_id;
-      if (!entityId || !entityId.startsWith("select.perm_")) return;
+      if (!entityId || !(entityId.startsWith("select.perm_") || entityId.startsWith("select.permission_manager_"))) return;
 
       const newState = event.data?.new_state;
       if (!newState) return;

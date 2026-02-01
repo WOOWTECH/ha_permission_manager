@@ -50,8 +50,12 @@ def ws_get_panel_permissions(
     permissions: dict[str, int] = {}
 
     # Find all panel permission entities for this user
+    # Entity IDs can be:
+    # - select.perm_* (suggested object id format)
+    # - select.permission_manager_* (has_entity_name format)
     for entity in hass.states.async_all("select"):
-        if not entity.entity_id.startswith("select.perm_"):
+        entity_id = entity.entity_id
+        if not (entity_id.startswith("select.perm_") or entity_id.startswith("select.permission_manager_")):
             continue
 
         attrs = entity.attributes
@@ -125,8 +129,12 @@ def ws_get_all_permissions(
     labels: dict[str, int] = {}
 
     # Find all permission entities for this user
+    # Entity IDs can be:
+    # - select.perm_* (suggested object id format)
+    # - select.permission_manager_* (has_entity_name format)
     for entity in hass.states.async_all("select"):
-        if not entity.entity_id.startswith("select.perm_"):
+        entity_id = entity.entity_id
+        if not (entity_id.startswith("select.perm_") or entity_id.startswith("select.permission_manager_")):
             continue
 
         attrs = entity.attributes
