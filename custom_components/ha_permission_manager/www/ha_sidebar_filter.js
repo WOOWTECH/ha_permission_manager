@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.14 - Preserve native sidebar when showing Access Denied page
+ * v2.9.15 - Use overlay approach for Access Denied to preserve native sidebar
  */
 (function() {
   "use strict";
@@ -193,7 +193,7 @@
 
   /**
    * Show access denied page
-   * Preserves native sidebar by replacing only the panel content area
+   * Uses overlay approach to preserve native sidebar
    */
   function showAccessDenied() {
     if (document.querySelector("ha-access-denied")) return;
@@ -212,26 +212,19 @@
       document.head.appendChild(script);
     }
 
-    // 嘗試替換內容區域，保留原生側邊欄
-    try {
-      const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
-      const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
-      const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
+    // 使用 overlay 方式疊加在最上層，保留原生側邊欄
+    accessDenied.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 100;
+      background: var(--primary-background-color, #fafafa);
+    `;
 
-      if (partialPanelResolver) {
-        partialPanelResolver.innerHTML = "";
-        partialPanelResolver.appendChild(accessDenied);
-        console.log("[SidebarFilter] Access denied mounted in panel area (native sidebar preserved)");
-        return;
-      }
-    } catch (err) {
-      console.warn("[SidebarFilter] Could not find panel area:", err);
-    }
-
-    // 備用方案：清除 body（當 Shadow DOM 結構不可用時）
-    console.warn("[SidebarFilter] Using fallback: replacing body");
-    document.body.innerHTML = "";
     document.body.appendChild(accessDenied);
+    console.log("[SidebarFilter] Access denied overlay mounted (native sidebar preserved)");
   }
 
   /**
