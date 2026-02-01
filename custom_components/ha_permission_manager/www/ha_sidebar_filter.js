@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.6 - Fixed Shadow DOM traversal for sidebar title i18n
+ * v2.9.7 - Added debug logs for sidebar title i18n, improved internal navigation
  */
 (function() {
   "use strict";
@@ -341,7 +341,10 @@
    */
   function updateSidebarTitle() {
     const hass = document.querySelector("home-assistant")?.hass;
-    if (!hass) return;
+    if (!hass) {
+      console.log("[SidebarFilter] updateSidebarTitle: no hass object");
+      return;
+    }
 
     const lang = hass.language || "en";
 
@@ -350,35 +353,69 @@
     lastLanguage = lang;
 
     const title = lang.startsWith("zh") ? SIDEBAR_TITLES.zh : SIDEBAR_TITLES.en;
+    console.log("[SidebarFilter] Language changed to:", lang, "-> title:", title);
 
     // Traverse Shadow DOM to find sidebar items
     const haMain = document.querySelector("home-assistant");
-    if (!haMain?.shadowRoot) return;
+    if (!haMain?.shadowRoot) {
+      console.log("[SidebarFilter] No haMain.shadowRoot");
+      return;
+    }
 
     const homeAssistantMain = haMain.shadowRoot.querySelector("home-assistant-main");
-    if (!homeAssistantMain?.shadowRoot) return;
+    if (!homeAssistantMain?.shadowRoot) {
+      console.log("[SidebarFilter] No homeAssistantMain.shadowRoot");
+      return;
+    }
 
     const haDrawer = homeAssistantMain.shadowRoot.querySelector("ha-drawer");
-    if (!haDrawer) return;
+    if (!haDrawer) {
+      console.log("[SidebarFilter] No haDrawer");
+      return;
+    }
 
-    const haSidebar = haDrawer.shadowRoot?.querySelector("ha-sidebar");
-    if (!haSidebar?.shadowRoot) return;
+    // Try shadowRoot first, then direct query (HA version differences)
+    let haSidebar = haDrawer.shadowRoot?.querySelector("ha-sidebar");
+    if (!haSidebar) {
+      haSidebar = haDrawer.querySelector("ha-sidebar");
+      console.log("[SidebarFilter] Found ha-sidebar via direct query");
+    }
+    if (!haSidebar?.shadowRoot) {
+      console.log("[SidebarFilter] No haSidebar or haSidebar.shadowRoot");
+      return;
+    }
 
     // Find the sidebar navigation items
     const paperListbox = haSidebar.shadowRoot.querySelector("paper-listbox");
-    if (!paperListbox) return;
+    if (!paperListbox) {
+      console.log("[SidebarFilter] No paperListbox in ha-sidebar");
+      return;
+    }
 
     const items = paperListbox.querySelectorAll("a");
+    console.log("[SidebarFilter] Found", items.length, "sidebar items");
+
+    let found = false;
     items.forEach(item => {
       const href = item.getAttribute("href");
       if (href === "/ha_permission_manager") {
+        found = true;
         const textSpan = item.querySelector(".item-text");
-        if (textSpan && textSpan.textContent !== title) {
-          textSpan.textContent = title;
-          console.log("[SidebarFilter] Updated sidebar title to:", title);
+        if (textSpan) {
+          console.log("[SidebarFilter] Current text:", textSpan.textContent, "-> target:", title);
+          if (textSpan.textContent !== title) {
+            textSpan.textContent = title;
+            console.log("[SidebarFilter] ✓ Updated sidebar title to:", title);
+          }
+        } else {
+          console.log("[SidebarFilter] No .item-text span found in permission manager link");
         }
       }
     });
+
+    if (!found) {
+      console.log("[SidebarFilter] Permission Manager link not found in sidebar");
+    }
   }
 
   /**

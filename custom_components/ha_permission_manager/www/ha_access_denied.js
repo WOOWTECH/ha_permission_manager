@@ -51,10 +51,31 @@ class HaAccessDenied extends LitElement {
   }
 
   _handleReturnHome() {
-    // Use location.assign for same-origin navigation
-    // This works in Android HA app without opening external browser
-    // because /profile/general is on the same origin
-    window.location.assign("/profile/general");
+    // Use HA internal navigation to stay within Android app WebView
+    const targetPath = "/profile/general";
+
+    // Method 1: Try HA's navigate function if available
+    const ha = document.querySelector("home-assistant");
+    if (ha?.hass?.navigate) {
+      console.log("[AccessDenied] Using hass.navigate()");
+      ha.hass.navigate(targetPath);
+      return;
+    }
+
+    // Method 2: Use history API + location-changed event (HA's internal router)
+    console.log("[AccessDenied] Using history.pushState + location-changed event");
+    history.pushState(null, "", targetPath);
+    window.dispatchEvent(new CustomEvent("location-changed", {
+      detail: { location: window.location }
+    }));
+
+    // Method 3: Fallback - if still on same page after 200ms, force reload
+    setTimeout(() => {
+      if (window.location.pathname !== targetPath) {
+        console.log("[AccessDenied] Fallback: using location.replace()");
+        window.location.replace(targetPath);
+      }
+    }, 200);
   }
 
   static get styles() {
