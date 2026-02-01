@@ -1,6 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
+ * v2.9.13 - Added custom sidebar overlay
  */
 import {
   LitElement,
@@ -42,7 +43,20 @@ class HaAccessDenied extends LitElement {
       hass: { type: Object },
       narrow: { type: Boolean },
       panel: { type: Object },
+      _sidebarOpen: { type: Boolean, state: true },
+      _accessiblePanels: { type: Array, state: true },
     };
+  }
+
+  constructor() {
+    super();
+    this._sidebarOpen = false;
+    this._accessiblePanels = [];
+  }
+
+  async connectedCallback() {
+    super.connectedCallback();
+    await this._loadAccessiblePanels();
   }
 
   get _i18n() {
@@ -50,18 +64,87 @@ class HaAccessDenied extends LitElement {
     return getI18n(lang);
   }
 
+  async _loadAccessiblePanels() {
+    if (!this.hass) {
+      console.log("[AccessDenied] hass not available, using fallback panels");
+      this._accessiblePanels = this._getFallbackPanels();
+      return;
+    }
+
+    try {
+      const result = await this.hass.callWS({
+        type: "permission_manager/get_panel_permissions",
+      });
+
+      const permissions = result.permissions || {};
+      const panels = this.hass.panels || {};
+
+      console.log("[AccessDenied] Loaded permissions:", permissions);
+      console.log("[AccessDenied] Available panels:", Object.keys(panels));
+
+      // Filter panels user has access to
+      this._accessiblePanels = Object.entries(panels)
+        .filter(([id, panel]) => {
+          // Always show profile
+          if (id === "profile") return true;
+          // Skip our own panel
+          if (id === "ha_permission_manager") return false;
+          // Check permission level > 0 (0 = denied)
+          const permKey = `panel_${id}`;
+          const level = permissions[permKey];
+          return level !== undefined && level > 0;
+        })
+        .map(([id, panel]) => ({
+          id,
+          title: panel.title || id,
+          icon: panel.icon || "mdi:view-dashboard",
+          url: `/${panel.url_path || id}`,
+        }))
+        .sort((a, b) => {
+          // Profile at the end
+          if (a.id === "profile") return 1;
+          if (b.id === "profile") return -1;
+          return a.title.localeCompare(b.title);
+        });
+
+      console.log("[AccessDenied] Accessible panels:", this._accessiblePanels);
+
+      // Ensure at least profile is available
+      if (this._accessiblePanels.length === 0) {
+        this._accessiblePanels = this._getFallbackPanels();
+      }
+    } catch (err) {
+      console.error("[AccessDenied] Failed to load permissions:", err);
+      this._accessiblePanels = this._getFallbackPanels();
+    }
+  }
+
+  _getFallbackPanels() {
+    return [{
+      id: "profile",
+      title: "Profile",
+      icon: "mdi:account",
+      url: "/profile/general",
+    }];
+  }
+
   _handleReturnHome() {
-    // 直接跳轉模式 - 使用 window.location.href
     console.log("[AccessDenied] Navigating to /profile/general");
     window.location.href = "/profile/general";
   }
 
   _toggleSidebar() {
-    // Access Denied 頁面的 DOM 已被替換（showAccessDenied 清除了 document.body）
-    // 側邊欄元素不存在，所以導航到 Profile 頁面作為替代
-    // Profile 頁面有完整的 HA UI，用戶可從那裡使用側邊欄
-    console.log("[AccessDenied] Navigating to profile (sidebar unavailable in this context)");
-    window.location.href = "/profile/general";
+    this._sidebarOpen = !this._sidebarOpen;
+    console.log("[AccessDenied] Sidebar toggled:", this._sidebarOpen);
+  }
+
+  _closeSidebar() {
+    this._sidebarOpen = false;
+  }
+
+  _navigateTo(url) {
+    console.log("[AccessDenied] Navigating to:", url);
+    window.location.href = url;
   }
 
   static get styles() {
@@ -80,6 +163,7 @@ class HaAccessDenied extends LitElement {
         box-sizing: border-box;
       }
 
+      /* Top Bar */
       .top-bar {
         position: fixed;
         top: 0;
@@ -91,7 +175,7 @@ class HaAccessDenied extends LitElement {
         padding: 0 8px;
         background: var(--app-header-background-color, var(--primary-color, #03a9f4));
         color: var(--app-header-text-color, white);
-        z-index: 1;
+        z-index: 5;
       }
 
       .menu-btn {
@@ -117,6 +201,105 @@ class HaAccessDenied extends LitElement {
         height: 24px;
       }
 
+      /* Sidebar Overlay */
+      .sidebar-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s, visibility 0.3s;
+        z-index: 10;
+      }
+
+      .sidebar-overlay.open {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      /* Sidebar Panel */
+      .sidebar-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 280px;
+        max-width: 80vw;
+        background: var(--sidebar-background-color, var(--card-background-color, white));
+        box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        z-index: 11;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .sidebar-panel.open {
+        transform: translateX(0);
+      }
+
+      /* Sidebar Header */
+      .sidebar-header {
+        display: flex;
+        align-items: center;
+        height: 56px;
+        padding: 0 16px;
+        background: var(--app-header-background-color, var(--primary-color, #03a9f4));
+        color: var(--app-header-text-color, white);
+        gap: 12px;
+        flex-shrink: 0;
+      }
+
+      .sidebar-header ha-icon {
+        --mdc-icon-size: 24px;
+      }
+
+      .sidebar-title {
+        font-size: 18px;
+        font-weight: 500;
+      }
+
+      /* Sidebar Items */
+      .sidebar-items {
+        flex: 1;
+        padding: 8px 0;
+        overflow-y: auto;
+      }
+
+      .sidebar-item {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: background 0.2s;
+        text-decoration: none;
+        color: var(--primary-text-color, #212121);
+        gap: 16px;
+      }
+
+      .sidebar-item:hover {
+        background: var(--secondary-background-color, rgba(0, 0, 0, 0.05));
+      }
+
+      .sidebar-item ha-icon {
+        --mdc-icon-size: 24px;
+        color: var(--secondary-text-color, #757575);
+        flex-shrink: 0;
+      }
+
+      .sidebar-item-text {
+        font-size: 14px;
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* Main Content */
       .container {
         text-align: center;
         max-width: 400px;
@@ -177,13 +360,39 @@ class HaAccessDenied extends LitElement {
 
   render() {
     const i18n = this._i18n;
+    const sidebarOpenClass = this._sidebarOpen ? "open" : "";
 
     return html`
+      <!-- Sidebar Overlay -->
+      <div
+        class="sidebar-overlay ${sidebarOpenClass}"
+        @click=${this._closeSidebar}
+      ></div>
+
+      <!-- Sidebar Panel -->
+      <div class="sidebar-panel ${sidebarOpenClass}">
+        <div class="sidebar-header">
+          <ha-icon icon="mdi:home-assistant"></ha-icon>
+          <span class="sidebar-title">Home Assistant</span>
+        </div>
+        <div class="sidebar-items">
+          ${this._accessiblePanels.map(panel => html`
+            <div class="sidebar-item" @click=${() => this._navigateTo(panel.url)}>
+              <ha-icon icon="${panel.icon}"></ha-icon>
+              <span class="sidebar-item-text">${panel.title}</span>
+            </div>
+          `)}
+        </div>
+      </div>
+
+      <!-- Top Bar -->
       <div class="top-bar">
         <button class="menu-btn" @click=${this._toggleSidebar}>
           <svg viewBox="0 0 24 24"><path fill="currentColor" d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"/></svg>
         </button>
       </div>
+
+      <!-- Main Content -->
       <div class="container">
         <ha-icon class="icon" icon="mdi:shield-lock"></ha-icon>
         <h1>${i18n.accessDenied}</h1>
