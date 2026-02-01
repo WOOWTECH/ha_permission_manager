@@ -159,9 +159,13 @@
 
   /**
    * Check current URL and block access if denied
+   * v2.9.26: Added hideAccessDenied() call when panel is accessible
    */
   async function checkCurrentPanelAccess() {
-    if (isAdmin) return;
+    if (isAdmin) {
+      hideAccessDenied(); // Admin 用戶，確保移除 Access Denied
+      return;
+    }
 
     const { permissions } = await fetchPermissions();
 
@@ -169,16 +173,21 @@
 
     // Handle root path as lovelace - always allow access (content will be filtered)
     if (path === "/" || path === "") {
+      hideAccessDenied();
       return;
     }
 
     const match = path.match(/^\/([^\/]+)/);
-    if (!match) return;
+    if (!match) {
+      hideAccessDenied();
+      return;
+    }
 
     const currentPanel = match[1];
 
     // Skip system paths and always-accessible panels
     if (["local", "api", "auth", "static", "frontend_latest", "frontend_es5", "_my_redirect", "profile"].includes(currentPanel)) {
+      hideAccessDenied();
       return;
     }
 
@@ -188,17 +197,21 @@
     if (permissions[panelToCheck] === PERM_DENY) {
       console.log("[SidebarFilter] Access denied for panel:", panelToCheck);
       showAccessDenied();
+    } else {
+      // 有權限，移除 Access Denied 並顯示原有內容
+      console.log("[SidebarFilter] Access granted for panel:", panelToCheck);
+      hideAccessDenied();
     }
   }
 
   /**
    * Show access denied page - insert into HA DOM structure
-   * v2.9.25: Added detailed logging and improved fallback handling
+   * v2.9.26: Simplified, always insert into partial-panel-resolver
    */
   function showAccessDenied() {
-    console.log("[SidebarFilter] showAccessDenied() called - v2.9.25");
+    console.log("[SidebarFilter] showAccessDenied() called - v2.9.26");
 
-    // 獲取 DOM 引用並記錄狀態
+    // 獲取 DOM 引用
     const haMain = document.querySelector("home-assistant");
     const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
     const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
@@ -209,10 +222,14 @@
       ", haDrawer=" + !!haDrawer +
       ", partialPanelResolver=" + !!partialPanelResolver);
 
-    // 檢查是否已存在（在 partial-panel-resolver 或 document.body）
-    const existingInResolver = partialPanelResolver?.querySelector("ha-access-denied");
-    const existingInBody = document.querySelector("ha-access-denied");
-    if (existingInResolver || existingInBody) {
+    if (!partialPanelResolver) {
+      console.error("[SidebarFilter] ✗ partial-panel-resolver not found, cannot show access denied");
+      return;
+    }
+
+    // 檢查是否已存在
+    const existingInResolver = partialPanelResolver.querySelector("ha-access-denied");
+    if (existingInResolver) {
       console.log("[SidebarFilter] showAccessDenied: already exists, skipping");
       return;
     }
@@ -232,49 +249,66 @@
       accessDenied.hass = haMain.hass;
     }
 
-    // 嘗試插入到 partial-panel-resolver 內部
-    if (partialPanelResolver) {
-      // 隱藏原有內容
-      Array.from(partialPanelResolver.children).forEach(child => {
-        if (child.tagName !== "HA-ACCESS-DENIED") {
-          child.style.display = "none";
-        }
-      });
+    // 隱藏原有內容
+    Array.from(partialPanelResolver.children).forEach(child => {
+      if (child.tagName !== "HA-ACCESS-DENIED") {
+        child.style.display = "none";
+      }
+    });
 
-      // 設置樣式（作為 partial-panel-resolver 的子元素）
-      accessDenied.style.cssText = `
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        width: 100%;
-        background: var(--primary-background-color, #fafafa);
-      `;
+    // 設置樣式（作為 partial-panel-resolver 的子元素）
+    accessDenied.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      width: 100%;
+      background: var(--primary-background-color, #fafafa);
+    `;
 
-      partialPanelResolver.appendChild(accessDenied);
-      console.log("[SidebarFilter] ✓ Access denied inserted into partial-panel-resolver (non-standalone mode)");
-    } else {
-      // Fallback: 如果找不到 partial-panel-resolver，使用 standalone 模式
-      console.warn("[SidebarFilter] ✗ partial-panel-resolver not found, using standalone mode");
-      accessDenied.setAttribute("standalone", "true");
+    partialPanelResolver.appendChild(accessDenied);
+    console.log("[SidebarFilter] ✓ Access denied inserted into partial-panel-resolver");
+  }
 
-      const haSidebar = haDrawer?.querySelector("ha-sidebar");
-      const sidebarWidth = haSidebar?.offsetWidth || 0;
+  /**
+   * Hide access denied page and restore original panel content
+   * v2.9.26: Added to support navigation between panels
+   */
+  function hideAccessDenied() {
+    console.log("[SidebarFilter] hideAccessDenied() called");
 
-      // 使用較低的 z-index，避免擋住側邊欄的下拉選單
-      // 側邊欄下拉選單通常 z-index > 10
-      accessDenied.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: ${sidebarWidth}px;
-        right: 0;
-        bottom: 0;
-        z-index: 1;
-        background: var(--primary-background-color, #fafafa);
-        overflow: auto;
-      `;
+    // 獲取 DOM 引用
+    const haMain = document.querySelector("home-assistant");
+    const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+    const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+    const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
 
-      document.body.appendChild(accessDenied);
-      console.log("[SidebarFilter] ✓ Access denied displayed in standalone mode (sidebar width: " + sidebarWidth + "px)");
+    // 移除 partial-panel-resolver 中的 Access Denied
+    const accessDeniedInResolver = partialPanelResolver?.querySelector("ha-access-denied");
+    if (accessDeniedInResolver) {
+      accessDeniedInResolver.remove();
+      console.log("[SidebarFilter] Removed access denied from partial-panel-resolver");
+
+      // 恢復原有內容的顯示
+      if (partialPanelResolver) {
+        Array.from(partialPanelResolver.children).forEach(child => {
+          if (child.style.display === "none") {
+            child.style.display = "";
+          }
+        });
+        console.log("[SidebarFilter] Restored original panel content");
+      }
+    }
+
+    // 移除 document.body 中的 Access Denied (standalone 模式)
+    const accessDeniedInBody = document.querySelector("ha-access-denied");
+    if (accessDeniedInBody) {
+      accessDeniedInBody.remove();
+      console.log("[SidebarFilter] Removed access denied from document.body");
+
+      // 恢復 partial-panel-resolver 的可見性
+      if (partialPanelResolver) {
+        partialPanelResolver.style.visibility = "";
+      }
     }
   }
 

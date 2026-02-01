@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.25 - Fixed hamburger button using direct DOM manipulation
+ * v2.9.26 - Simplified: removed standalone mode, no custom header needed
  */
 import {
   LitElement,
@@ -13,24 +13,18 @@ import {
 const I18N = {
   en: {
     accessDenied: "Access Denied",
-    panelTitle: "Permission Manager",
     message: "You don't have permission to view this panel.",
     contact: "Contact your administrator if you believe this is an error.",
-    menu: "Menu",
   },
   "zh-Hans": {
     accessDenied: "访问被拒绝",
-    panelTitle: "权限管理",
     message: "您没有权限查看此面板。",
     contact: "如果您认为这是一个错误，请联系您的管理员。",
-    menu: "菜单",
   },
   "zh-Hant": {
     accessDenied: "存取被拒絕",
-    panelTitle: "權限管理",
     message: "您沒有權限檢視此面板。",
     contact: "如果您認為這是一個錯誤，請聯繫您的管理員。",
-    menu: "選單",
   },
 };
 
@@ -44,16 +38,7 @@ class HaAccessDenied extends LitElement {
   static get properties() {
     return {
       hass: { type: Object },
-      standalone: { type: Boolean, reflect: true },
     };
-  }
-
-  constructor() {
-    super();
-    this.standalone = false;
-    this._drawerObserver = null;
-    this._sidebarObserver = null;
-    this._resizeHandler = null;
   }
 
   get _i18n() {
@@ -61,258 +46,20 @@ class HaAccessDenied extends LitElement {
     return getI18n(lang);
   }
 
-  connectedCallback() {
-    super.connectedCallback();
-    if (this.standalone) {
-      this._setupSidebarObserver();
-    }
-  }
-
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    this._cleanupObservers();
-  }
-
-  /**
-   * Get ha-drawer element from Home Assistant's shadow DOM
-   */
-  _getHaDrawer() {
-    const haMain = document.querySelector("home-assistant");
-    const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
-    return homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
-  }
-
-  /**
-   * Toggle sidebar using direct DOM manipulation
-   * v2.9.25: Changed from event dispatch to direct property manipulation
-   * because events don't cross Shadow DOM boundaries reliably
-   */
-  _toggleSidebar() {
-    console.log("[AccessDenied] _toggleSidebar() called");
-
-    const haDrawer = this._getHaDrawer();
-    const haSidebar = haDrawer?.querySelector("ha-sidebar");
-
-    if (!haDrawer) {
-      console.warn("[AccessDenied] ha-drawer not found");
-      return;
-    }
-
-    // Check current state - desktop mode uses 'expanded', mobile uses 'open'
-    const isNarrow = haDrawer.narrow || haDrawer.hasAttribute("narrow");
-
-    if (isNarrow) {
-      // Mobile/tablet mode: toggle the drawer's 'open' property
-      const isOpen = haDrawer.open || haDrawer.hasAttribute("open");
-      console.log("[AccessDenied] Mobile mode, isOpen=" + isOpen);
-
-      if (isOpen) {
-        haDrawer.open = false;
-        haDrawer.removeAttribute("open");
-      } else {
-        haDrawer.open = true;
-        haDrawer.setAttribute("open", "");
-      }
-    } else {
-      // Desktop mode: toggle the sidebar's 'expanded' property
-      if (haSidebar) {
-        const isExpanded = haSidebar.expanded !== false;
-        console.log("[AccessDenied] Desktop mode, isExpanded=" + isExpanded);
-
-        haSidebar.expanded = !isExpanded;
-        if (isExpanded) {
-          haSidebar.removeAttribute("expanded");
-        } else {
-          haSidebar.setAttribute("expanded", "");
-        }
-      }
-    }
-
-    // Update position after transitions
-    setTimeout(() => this._updatePosition(), 50);
-    setTimeout(() => this._updatePosition(), 300);
-  }
-
-  /**
-   * Update component position based on sidebar width
-   */
-  _updatePosition() {
-    const haDrawer = this._getHaDrawer();
-    const haSidebar = haDrawer?.querySelector("ha-sidebar");
-    const width = haSidebar?.offsetWidth || 0;
-    this.style.left = width + "px";
-  }
-
-  /**
-   * Setup observers for sidebar width changes
-   */
-  _setupSidebarObserver() {
-    // Initial position update
-    requestAnimationFrame(() => this._updatePosition());
-
-    // Resize handler
-    this._resizeHandler = () => this._updatePosition();
-    window.addEventListener("resize", this._resizeHandler);
-
-    const haDrawer = this._getHaDrawer();
-    const haSidebar = haDrawer?.querySelector("ha-sidebar");
-
-    // Observe ha-drawer for attribute changes (open/close)
-    if (haDrawer) {
-      this._drawerObserver = new MutationObserver(() => {
-        this._updatePosition();
-        // Also update after transition completes
-        setTimeout(() => this._updatePosition(), 300);
-      });
-
-      this._drawerObserver.observe(haDrawer, {
-        attributes: true,
-        attributeFilter: ["open", "narrow"]
-      });
-
-      // Listen for transition end events
-      haDrawer.addEventListener("transitionend", this._resizeHandler);
-    }
-
-    // Also observe ha-sidebar for expanded changes (desktop mode)
-    if (haSidebar) {
-      this._sidebarObserver = new MutationObserver(() => {
-        this._updatePosition();
-        setTimeout(() => this._updatePosition(), 300);
-      });
-
-      this._sidebarObserver.observe(haSidebar, {
-        attributes: true,
-        attributeFilter: ["expanded", "narrow"]
-      });
-
-      haSidebar.addEventListener("transitionend", this._resizeHandler);
-    }
-  }
-
-  /**
-   * Cleanup observers and event listeners
-   */
-  _cleanupObservers() {
-    if (this._drawerObserver) {
-      this._drawerObserver.disconnect();
-      this._drawerObserver = null;
-    }
-
-    if (this._sidebarObserver) {
-      this._sidebarObserver.disconnect();
-      this._sidebarObserver = null;
-    }
-
-    if (this._resizeHandler) {
-      window.removeEventListener("resize", this._resizeHandler);
-
-      const haDrawer = this._getHaDrawer();
-      const haSidebar = haDrawer?.querySelector("ha-sidebar");
-
-      if (haDrawer) {
-        haDrawer.removeEventListener("transitionend", this._resizeHandler);
-      }
-      if (haSidebar) {
-        haSidebar.removeEventListener("transitionend", this._resizeHandler);
-      }
-
-      this._resizeHandler = null;
-    }
-  }
-
   static get styles() {
     return css`
       :host {
         display: flex;
         flex-direction: column;
+        align-items: center;
+        justify-content: center;
         min-height: 100%;
         height: 100%;
+        padding: 24px;
         background: var(--primary-background-color, #fafafa);
         font-family: var(--paper-font-body1_-_font-family, "Roboto", sans-serif);
         color: var(--primary-text-color, #212121);
         box-sizing: border-box;
-      }
-
-      /* Normal mode: center content */
-      :host(:not([standalone])) {
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
-      }
-
-      /* Standalone mode: has header */
-      :host([standalone]) {
-        padding: 0;
-      }
-
-      /* Header - only visible in standalone mode */
-      .header {
-        display: none;
-        align-items: center;
-        height: var(--header-height, 56px);
-        padding: 0 16px;
-        background: var(--app-header-background-color, var(--primary-color, #03a9f4));
-        color: var(--app-header-text-color, var(--text-primary-color, white));
-        position: sticky;
-        top: 0;
-        z-index: 1;
-        gap: 12px;
-        flex-shrink: 0;
-      }
-
-      :host([standalone]) .header {
-        display: flex;
-      }
-
-      .menu-btn {
-        width: 40px;
-        height: 40px;
-        border: none;
-        background: transparent;
-        color: inherit;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        transition: background 0.2s;
-        flex-shrink: 0;
-        padding: 0;
-      }
-
-      .menu-btn:hover {
-        background: rgba(255, 255, 255, 0.1);
-      }
-
-      .menu-btn:active {
-        background: rgba(255, 255, 255, 0.2);
-      }
-
-      .menu-btn svg {
-        width: 24px;
-        height: 24px;
-      }
-
-      .header-title {
-        flex: 1;
-        font-size: 20px;
-        font-weight: 500;
-        margin: 0;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: inherit;
-      }
-
-      /* Content area */
-      .content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
       }
 
       .container {
@@ -348,20 +95,6 @@ class HaAccessDenied extends LitElement {
 
       /* Mobile responsive */
       @media (max-width: 600px) {
-        .header {
-          height: 48px;
-          padding: 0 8px;
-        }
-
-        .header-title {
-          font-size: 18px;
-        }
-
-        .menu-btn {
-          width: 36px;
-          height: 36px;
-        }
-
         .icon {
           --mdc-icon-size: 72px;
         }
@@ -381,28 +114,11 @@ class HaAccessDenied extends LitElement {
     const i18n = this._i18n;
 
     return html`
-      <!-- Header - only visible in standalone mode -->
-      <div class="header">
-        <button
-          class="menu-btn"
-          @click=${this._toggleSidebar}
-          title="${i18n.menu}"
-        >
-          <svg viewBox="0 0 24 24">
-            <path fill="currentColor" d="M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z"/>
-          </svg>
-        </button>
-        <h1 class="header-title">${i18n.panelTitle}</h1>
-      </div>
-
-      <!-- Main content -->
-      <div class="content">
-        <div class="container">
-          <ha-icon class="icon" icon="mdi:shield-lock"></ha-icon>
-          <h1>${i18n.accessDenied}</h1>
-          <p class="message">${i18n.message}</p>
-          <p class="contact">${i18n.contact}</p>
-        </div>
+      <div class="container">
+        <ha-icon class="icon" icon="mdi:shield-lock"></ha-icon>
+        <h1>${i18n.accessDenied}</h1>
+        <p class="message">${i18n.message}</p>
+        <p class="contact">${i18n.contact}</p>
       </div>
     `;
   }
