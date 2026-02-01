@@ -83,10 +83,10 @@
       return true;
     }
 
-    // No permissions loaded yet - default to show
+    // No permissions loaded yet - fail-secure: hide content
     if (!permissions) {
-      console.log("[LovelaceFilter] No permissions loaded - show content");
-      return true;
+      console.log("[LovelaceFilter] No permissions loaded - hide content (fail-secure)");
+      return false;
     }
 
     // Check lovelace panel permission specifically
@@ -127,9 +127,9 @@
       return true;
     }
 
-    // Default: show content
-    console.log("[LovelaceFilter] Default - show content");
-    return true;
+    // Default: fail-secure - hide content if no explicit lovelace permission found
+    console.log("[LovelaceFilter] No lovelace permission found - hide content (fail-secure)");
+    return false;
   }
 
   /**

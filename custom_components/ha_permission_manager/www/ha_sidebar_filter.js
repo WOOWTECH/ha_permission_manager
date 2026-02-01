@@ -134,15 +134,15 @@
 
       const level = permissions[panelId];
 
-      // Only hide if explicitly set to 0
-      if (level === PERM_DENY) {
+      // Fail-secure: only show panels with explicit permission > 0
+      // Hide panels that are undefined or explicitly set to 0
+      if (level !== undefined && level > PERM_DENY) {
+        filteredPanels[panelId] = panel;
+      } else {
+        // undefined or 0 = hide
         hiddenPanels.push(panelId);
         hiddenCount++;
-        continue;
       }
-
-      // Show all other panels (including those without permission set)
-      filteredPanels[panelId] = panel;
     }
 
     // Apply filtered panels
