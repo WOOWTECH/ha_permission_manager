@@ -229,13 +229,14 @@
     }
 
     // 定位組件（standalone 模式，從頂部開始）
+    // z-index: 1 - 足夠覆蓋內容，但不會擋住側邊欄的下拉選單
     accessDenied.style.cssText = `
       position: fixed;
       top: 0;
       left: ${sidebarWidth}px;
       right: 0;
       bottom: 0;
-      z-index: 100;
+      z-index: 1;
       background: var(--primary-background-color, #fafafa);
       overflow: auto;
     `;

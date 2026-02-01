@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.22 - Fixed hamburger button, added sidebar width observer
+ * v2.9.23 - Fixed desktop hamburger button to dispatch event from within HA tree
  */
 import {
   LitElement,
@@ -52,6 +52,7 @@ class HaAccessDenied extends LitElement {
     super();
     this.standalone = false;
     this._drawerObserver = null;
+    this._sidebarObserver = null;
     this._resizeHandler = null;
   }
 
@@ -82,30 +83,30 @@ class HaAccessDenied extends LitElement {
   }
 
   /**
-   * Toggle sidebar by directly manipulating ha-drawer's open state
+   * Toggle sidebar by dispatching hass-toggle-menu event from within HA tree
+   * This ensures the event reaches HA's sidebar listener correctly
    */
   _toggleSidebar() {
     const haDrawer = this._getHaDrawer();
+    const haSidebar = haDrawer?.querySelector("ha-sidebar");
 
-    if (haDrawer) {
-      // Toggle the drawer's open state
-      const isCurrentlyOpen = haDrawer.hasAttribute("open") || haDrawer.open === true;
+    // Dispatch event from ha-sidebar or ha-drawer (inside HA's component tree)
+    // This is the same mechanism HA's native hamburger button uses
+    const targetElement = haSidebar || haDrawer;
 
-      if (isCurrentlyOpen) {
-        haDrawer.removeAttribute("open");
-        haDrawer.open = false;
-      } else {
-        haDrawer.setAttribute("open", "");
-        haDrawer.open = true;
-      }
+    if (targetElement) {
+      targetElement.dispatchEvent(new CustomEvent("hass-toggle-menu", {
+        bubbles: true,
+        composed: true
+      }));
 
-      // Update position after a short delay for transition
+      // Update position after transitions
       setTimeout(() => this._updatePosition(), 50);
       setTimeout(() => this._updatePosition(), 300);
       return;
     }
 
-    // Fallback: dispatch event to home-assistant element
+    // Fallback: try from home-assistant element
     const haMain = document.querySelector("home-assistant");
     if (haMain) {
       haMain.dispatchEvent(new CustomEvent("hass-toggle-menu", {
@@ -136,8 +137,10 @@ class HaAccessDenied extends LitElement {
     this._resizeHandler = () => this._updatePosition();
     window.addEventListener("resize", this._resizeHandler);
 
-    // Observe ha-drawer for attribute changes (open/close)
     const haDrawer = this._getHaDrawer();
+    const haSidebar = haDrawer?.querySelector("ha-sidebar");
+
+    // Observe ha-drawer for attribute changes (open/close)
     if (haDrawer) {
       this._drawerObserver = new MutationObserver(() => {
         this._updatePosition();
@@ -153,6 +156,21 @@ class HaAccessDenied extends LitElement {
       // Listen for transition end events
       haDrawer.addEventListener("transitionend", this._resizeHandler);
     }
+
+    // Also observe ha-sidebar for expanded changes (desktop mode)
+    if (haSidebar) {
+      this._sidebarObserver = new MutationObserver(() => {
+        this._updatePosition();
+        setTimeout(() => this._updatePosition(), 300);
+      });
+
+      this._sidebarObserver.observe(haSidebar, {
+        attributes: true,
+        attributeFilter: ["expanded", "narrow"]
+      });
+
+      haSidebar.addEventListener("transitionend", this._resizeHandler);
+    }
   }
 
   /**
@@ -164,12 +182,22 @@ class HaAccessDenied extends LitElement {
       this._drawerObserver = null;
     }
 
+    if (this._sidebarObserver) {
+      this._sidebarObserver.disconnect();
+      this._sidebarObserver = null;
+    }
+
     if (this._resizeHandler) {
       window.removeEventListener("resize", this._resizeHandler);
 
       const haDrawer = this._getHaDrawer();
+      const haSidebar = haDrawer?.querySelector("ha-sidebar");
+
       if (haDrawer) {
         haDrawer.removeEventListener("transitionend", this._resizeHandler);
+      }
+      if (haSidebar) {
+        haSidebar.removeEventListener("transitionend", this._resizeHandler);
       }
 
       this._resizeHandler = null;
@@ -211,7 +239,7 @@ class HaAccessDenied extends LitElement {
         color: var(--app-header-text-color, var(--text-primary-color, white));
         position: sticky;
         top: 0;
-        z-index: 100;
+        z-index: 1;
         gap: 12px;
         flex-shrink: 0;
       }
