@@ -57,24 +57,11 @@ class HaAccessDenied extends LitElement {
   }
 
   _toggleSidebar() {
-    // 直接操作 ha-drawer 的 opened 屬性（最可靠的方式）
-    try {
-      const haMain = document.querySelector("home-assistant");
-      if (haMain?.shadowRoot) {
-        const homeAssistantMain = haMain.shadowRoot.querySelector("home-assistant-main");
-        if (homeAssistantMain?.shadowRoot) {
-          const haDrawer = homeAssistantMain.shadowRoot.querySelector("ha-drawer");
-          if (haDrawer) {
-            haDrawer.opened = !haDrawer.opened;
-            console.log("[AccessDenied] Sidebar toggled. opened =", haDrawer.opened);
-            return;
-          }
-        }
-      }
-      console.warn("[AccessDenied] Could not access ha-drawer");
-    } catch (err) {
-      console.error("[AccessDenied] Error toggling sidebar:", err);
-    }
+    // Access Denied 頁面的 DOM 已被替換（showAccessDenied 清除了 document.body）
+    // 側邊欄元素不存在，所以導航到 Profile 頁面作為替代
+    // Profile 頁面有完整的 HA UI，用戶可從那裡使用側邊欄
+    console.log("[AccessDenied] Navigating to profile (sidebar unavailable in this context)");
+    window.location.href = "/profile/general";
   }
 
   static get styles() {
