@@ -57,21 +57,23 @@ class HaAccessDenied extends LitElement {
   }
 
   _toggleSidebar() {
-    // 從 home-assistant 主元素派發事件（使用 Event 而非 CustomEvent）
-    const haMain = document.querySelector("home-assistant");
-    if (haMain) {
-      haMain.dispatchEvent(new Event("hass-toggle-menu", {
-        bubbles: true,
-        composed: true
-      }));
-      console.log("[AccessDenied] Sidebar toggle dispatched from home-assistant element");
-    } else {
-      // 回退方案：從 window 派發
-      window.dispatchEvent(new Event("hass-toggle-menu", {
-        bubbles: true,
-        composed: true
-      }));
-      console.log("[AccessDenied] Sidebar toggle dispatched from window (fallback)");
+    // 直接操作 ha-drawer 的 opened 屬性（最可靠的方式）
+    try {
+      const haMain = document.querySelector("home-assistant");
+      if (haMain?.shadowRoot) {
+        const homeAssistantMain = haMain.shadowRoot.querySelector("home-assistant-main");
+        if (homeAssistantMain?.shadowRoot) {
+          const haDrawer = homeAssistantMain.shadowRoot.querySelector("ha-drawer");
+          if (haDrawer) {
+            haDrawer.opened = !haDrawer.opened;
+            console.log("[AccessDenied] Sidebar toggled. opened =", haDrawer.opened);
+            return;
+          }
+        }
+      }
+      console.warn("[AccessDenied] Could not access ha-drawer");
+    } catch (err) {
+      console.error("[AccessDenied] Error toggling sidebar:", err);
     }
   }
 

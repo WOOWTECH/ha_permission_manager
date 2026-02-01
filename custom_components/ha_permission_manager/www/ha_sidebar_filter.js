@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.10 - Fixed sidebar title initialization using hass.panels method
+ * v2.9.11 - Fixed sidebar title using DOM manipulation (hass.panels doesn't update UI)
  */
 (function() {
   "use strict";
@@ -349,8 +349,8 @@
       console.log("[SidebarFilter] Language changed:", lastLanguage, "->", newLanguage);
       lastLanguage = newLanguage;
 
-      // Update sidebar title via hass.panels data model
-      updateSidebarTitleViaHass(newLanguage);
+      // Update sidebar title via DOM manipulation (more reliable than hass.panels)
+      updateSidebarTitle();
     }, "core_config_updated");
 
     console.log("[SidebarFilter] Subscribed to changes (state_changed, user_updated, auth, lovelace_updated, core_config_updated)");
@@ -448,29 +448,14 @@
 
   /**
    * Initialize sidebar title with retry mechanism
-   * Uses updateSidebarTitleViaHass (more reliable) first, then falls back to DOM
+   * Uses DOM manipulation directly (updateSidebarTitleViaHass doesn't work for title updates)
    */
   function initSidebarTitle() {
     let attempts = 0;
     const maxAttempts = 30;
 
-    function tryUpdate() {
-      const hass = document.querySelector("home-assistant")?.hass;
-      if (!hass) return false;
-
-      const lang = hass.language || "en";
-
-      // 優先使用 hass.panels 方式（更可靠）
-      if (updateSidebarTitleViaHass(lang)) {
-        return true;
-      }
-
-      // 回退到 DOM 操作
-      return updateSidebarTitle();
-    }
-
-    // 嘗試立即更新
-    if (tryUpdate()) {
+    // 嘗試立即更新（使用 DOM 操作）
+    if (updateSidebarTitle()) {
       console.log("[SidebarFilter] Sidebar title updated on first attempt");
       return;
     }
@@ -478,7 +463,7 @@
     // 重試機制
     const interval = setInterval(() => {
       attempts++;
-      if (tryUpdate()) {
+      if (updateSidebarTitle()) {
         console.log("[SidebarFilter] Sidebar title updated after", attempts, "attempts");
         clearInterval(interval);
       } else if (attempts >= maxAttempts) {
