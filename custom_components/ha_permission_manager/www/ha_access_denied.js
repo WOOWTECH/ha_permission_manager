@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.23 - Fixed desktop hamburger button to dispatch event from within HA tree
+ * v2.9.24 - Removed standalone header, integrated into HA DOM structure
  */
 import {
   LitElement,

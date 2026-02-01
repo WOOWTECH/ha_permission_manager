@@ -192,23 +192,25 @@
   }
 
   /**
-   * Show access denied page - immediate display without waiting
-   * v2.9.22: Removed waitForPartialPanelResolver for instant display
+   * Show access denied page - insert into HA DOM structure
+   * v2.9.24: Insert into partial-panel-resolver to work with HA's native layout
    */
   function showAccessDenied() {
     console.log("[SidebarFilter] showAccessDenied() called");
-
-    // 檢查是否已存在
-    if (document.querySelector("ha-access-denied")) {
-      console.log("[SidebarFilter] showAccessDenied: already exists, skipping");
-      return;
-    }
 
     // 獲取 DOM 引用
     const haMain = document.querySelector("home-assistant");
     const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
     const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
-    const haSidebar = haDrawer?.querySelector("ha-sidebar");
+    const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
+
+    // 檢查是否已存在（在 partial-panel-resolver 或 document.body）
+    const existingInResolver = partialPanelResolver?.querySelector("ha-access-denied");
+    const existingInBody = document.querySelector("ha-access-denied");
+    if (existingInResolver || existingInBody) {
+      console.log("[SidebarFilter] showAccessDenied: already exists, skipping");
+      return;
+    }
 
     // 載入組件腳本
     if (!customElements.get("ha-access-denied")) {
@@ -218,42 +220,54 @@
       document.head.appendChild(script);
     }
 
-    // 計算側邊欄寬度
-    const sidebarWidth = haSidebar?.offsetWidth || 0;
-
-    // 創建並配置組件
+    // 創建組件（非 standalone 模式，不需要自己的 header）
     const accessDenied = document.createElement("ha-access-denied");
-    accessDenied.setAttribute("standalone", "true");
     if (haMain?.hass) {
       accessDenied.hass = haMain.hass;
     }
 
-    // 定位組件（standalone 模式，從頂部開始）
-    // z-index: 1 - 足夠覆蓋內容，但不會擋住側邊欄的下拉選單
-    accessDenied.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: ${sidebarWidth}px;
-      right: 0;
-      bottom: 0;
-      z-index: 1;
-      background: var(--primary-background-color, #fafafa);
-      overflow: auto;
-    `;
+    // 嘗試插入到 partial-panel-resolver 內部
+    if (partialPanelResolver) {
+      // 隱藏原有內容
+      Array.from(partialPanelResolver.children).forEach(child => {
+        if (child.tagName !== "HA-ACCESS-DENIED") {
+          child.style.display = "none";
+        }
+      });
 
-    document.body.appendChild(accessDenied);
+      // 設置樣式（作為 partial-panel-resolver 的子元素）
+      accessDenied.style.cssText = `
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        width: 100%;
+        background: var(--primary-background-color, #fafafa);
+      `;
 
-    // 隱藏原有面板內容
-    try {
-      const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
-      if (partialPanelResolver) {
-        partialPanelResolver.style.visibility = 'hidden';
-      }
-    } catch (e) {
-      // ignore
+      partialPanelResolver.appendChild(accessDenied);
+      console.log("[SidebarFilter] Access denied inserted into partial-panel-resolver");
+    } else {
+      // Fallback: 如果找不到 partial-panel-resolver，使用 standalone 模式
+      console.warn("[SidebarFilter] partial-panel-resolver not found, using standalone mode");
+      accessDenied.setAttribute("standalone", "true");
+
+      const haSidebar = haDrawer?.querySelector("ha-sidebar");
+      const sidebarWidth = haSidebar?.offsetWidth || 0;
+
+      accessDenied.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: ${sidebarWidth}px;
+        right: 0;
+        bottom: 0;
+        z-index: 1;
+        background: var(--primary-background-color, #fafafa);
+        overflow: auto;
+      `;
+
+      document.body.appendChild(accessDenied);
+      console.log("[SidebarFilter] Access denied displayed in standalone mode (sidebar width: " + sidebarWidth + "px)");
     }
-
-    console.log("[SidebarFilter] Access denied displayed immediately (sidebar width: " + sidebarWidth + "px)");
   }
 
   /**
