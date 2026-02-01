@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.11 - Fixed sidebar title using DOM manipulation (hass.panels doesn't update UI)
+ * v2.9.14 - Preserve native sidebar when showing Access Denied page
  */
 (function() {
   "use strict";
@@ -193,6 +193,7 @@
 
   /**
    * Show access denied page
+   * Preserves native sidebar by replacing only the panel content area
    */
   function showAccessDenied() {
     if (document.querySelector("ha-access-denied")) return;
@@ -203,15 +204,34 @@
       accessDenied.hass = haMain.hass;
     }
 
-    document.body.innerHTML = "";
-    document.body.appendChild(accessDenied);
-
+    // 載入組件腳本
     if (!customElements.get("ha-access-denied")) {
       const script = document.createElement("script");
       script.type = "module";
-      script.src = "/local/ha_access_denied.js?v=2.5.1&t=" + Date.now();
+      script.src = "/local/ha_access_denied.js?v=" + Date.now();
       document.head.appendChild(script);
     }
+
+    // 嘗試替換內容區域，保留原生側邊欄
+    try {
+      const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+      const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+      const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
+
+      if (partialPanelResolver) {
+        partialPanelResolver.innerHTML = "";
+        partialPanelResolver.appendChild(accessDenied);
+        console.log("[SidebarFilter] Access denied mounted in panel area (native sidebar preserved)");
+        return;
+      }
+    } catch (err) {
+      console.warn("[SidebarFilter] Could not find panel area:", err);
+    }
+
+    // 備用方案：清除 body（當 Shadow DOM 結構不可用時）
+    console.warn("[SidebarFilter] Using fallback: replacing body");
+    document.body.innerHTML = "";
+    document.body.appendChild(accessDenied);
   }
 
   /**
