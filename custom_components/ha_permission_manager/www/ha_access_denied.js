@@ -57,11 +57,22 @@ class HaAccessDenied extends LitElement {
   }
 
   _toggleSidebar() {
-    // 觸發 HA 的側邊欄開關事件
-    this.dispatchEvent(new CustomEvent("hass-toggle-menu", {
-      bubbles: true,
-      composed: true
-    }));
+    // 從 home-assistant 主元素派發事件（使用 Event 而非 CustomEvent）
+    const haMain = document.querySelector("home-assistant");
+    if (haMain) {
+      haMain.dispatchEvent(new Event("hass-toggle-menu", {
+        bubbles: true,
+        composed: true
+      }));
+      console.log("[AccessDenied] Sidebar toggle dispatched from home-assistant element");
+    } else {
+      // 回退方案：從 window 派發
+      window.dispatchEvent(new Event("hass-toggle-menu", {
+        bubbles: true,
+        composed: true
+      }));
+      console.log("[AccessDenied] Sidebar toggle dispatched from window (fallback)");
+    }
   }
 
   static get styles() {

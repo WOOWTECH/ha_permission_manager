@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.9 - Fixed sidebar title language auto-switch via core_config_updated event
+ * v2.9.10 - Fixed sidebar title initialization using hass.panels method
  */
 (function() {
   "use strict";
@@ -448,21 +448,37 @@
 
   /**
    * Initialize sidebar title with retry mechanism
+   * Uses updateSidebarTitleViaHass (more reliable) first, then falls back to DOM
    */
   function initSidebarTitle() {
     let attempts = 0;
     const maxAttempts = 30;
 
-    // Try immediately
-    if (updateSidebarTitle()) {
+    function tryUpdate() {
+      const hass = document.querySelector("home-assistant")?.hass;
+      if (!hass) return false;
+
+      const lang = hass.language || "en";
+
+      // 優先使用 hass.panels 方式（更可靠）
+      if (updateSidebarTitleViaHass(lang)) {
+        return true;
+      }
+
+      // 回退到 DOM 操作
+      return updateSidebarTitle();
+    }
+
+    // 嘗試立即更新
+    if (tryUpdate()) {
       console.log("[SidebarFilter] Sidebar title updated on first attempt");
       return;
     }
 
-    // Retry every 2 seconds until successful
+    // 重試機制
     const interval = setInterval(() => {
       attempts++;
-      if (updateSidebarTitle()) {
+      if (tryUpdate()) {
         console.log("[SidebarFilter] Sidebar title updated after", attempts, "attempts");
         clearInterval(interval);
       } else if (attempts >= maxAttempts) {
