@@ -236,18 +236,39 @@
       console.warn("[SidebarFilter] Could not find panel container:", err);
     }
 
-    // 回退：overlay 避開頂部欄
+    // 回退：overlay 避開頂部欄和側邊欄
+    // 檢測側邊欄是否固定顯示（桌面模式）
+    let sidebarWidth = 0;
+    try {
+      const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
+      const haDrawer = homeAssistantMain?.shadowRoot?.querySelector("ha-drawer");
+      const haSidebar = haDrawer?.querySelector("ha-sidebar");
+
+      if (haSidebar) {
+        const sidebarStyle = window.getComputedStyle(haSidebar);
+        // 檢查側邊欄是否可見（display 不是 none，且有寬度）
+        if (sidebarStyle.display !== 'none' && sidebarStyle.visibility !== 'hidden') {
+          const width = parseInt(sidebarStyle.width, 10);
+          if (width > 0) {
+            sidebarWidth = width;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[SidebarFilter] Could not detect sidebar width:", e);
+    }
+
     accessDenied.style.cssText = `
       position: fixed;
       top: var(--header-height, 56px);
-      left: 0;
+      left: ${sidebarWidth}px;
       right: 0;
       bottom: 0;
       z-index: 50;
       background: var(--primary-background-color, #fafafa);
     `;
     document.body.appendChild(accessDenied);
-    console.log("[SidebarFilter] Access denied overlay mounted (fallback)");
+    console.log("[SidebarFilter] Access denied overlay mounted (fallback, sidebar width: " + sidebarWidth + "px)");
   }
 
   /**
