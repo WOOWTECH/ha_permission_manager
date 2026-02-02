@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.16 - Insert Access Denied into partial-panel-resolver to preserve native sidebar
+ * v2.9.31 - Fixed state not resetting on logout/re-login
  */
 (function() {
   "use strict";
@@ -21,6 +21,19 @@
   let isAdmin = false;
   let initialized = false;
   let lastLanguage = null;
+  let hassObserverSetup = false;
+
+  /**
+   * Reset all state (called when user changes or hass is recreated)
+   */
+  function resetState() {
+    console.log("[SidebarFilter] Resetting state");
+    originalPanels = null;
+    currentUserId = null;
+    isAdmin = false;
+    initialized = false;
+    lastLanguage = null;
+  }
 
   /**
    * Wait for Home Assistant frontend to be ready
@@ -598,13 +611,48 @@
   }
 
   /**
+   * Setup observer to detect when home-assistant element is recreated (logout/login)
+   */
+  function setupHassObserver() {
+    if (hassObserverSetup) return;
+    hassObserverSetup = true;
+
+    // Track the current home-assistant element
+    let currentHaElement = document.querySelector("home-assistant");
+
+    const observer = new MutationObserver((mutations) => {
+      const newHaElement = document.querySelector("home-assistant");
+
+      // Check if home-assistant element was recreated
+      if (newHaElement && newHaElement !== currentHaElement) {
+        console.log("[SidebarFilter] home-assistant element recreated, reinitializing");
+        currentHaElement = newHaElement;
+        resetState();
+        setTimeout(init, 500);
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    console.log("[SidebarFilter] Hass observer setup complete");
+  }
+
+  /**
    * Initialize
    */
   async function init() {
+    // Check if user changed (logout/re-login scenario)
+    const haMain = document.querySelector("home-assistant");
+    const newUserId = haMain?.hass?.user?.id;
+
+    if (initialized && newUserId && currentUserId && newUserId !== currentUserId) {
+      console.log("[SidebarFilter] User changed from", currentUserId, "to", newUserId, "- resetting state");
+      resetState();
+    }
+
     if (initialized) return;
     initialized = true;
 
-    console.log("[SidebarFilter] Initializing v2.9.9");
+    console.log("[SidebarFilter] Initializing v2.9.31");
 
     // Wait a bit for HA to fully load
     await new Promise(r => setTimeout(r, 500));
@@ -631,9 +679,13 @@
 
   // Start when DOM is ready
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", () => {
+      setupHassObserver();
+      init();
+    });
   } else {
     // Small delay to ensure HA is ready
+    setupHassObserver();
     setTimeout(init, 500);
   }
 
@@ -645,5 +697,7 @@
     updateSidebarTitle: updateSidebarTitle,
     updateSidebarTitleViaHass: updateSidebarTitleViaHass,
     initSidebarTitle: initSidebarTitle,
+    resetState: resetState,
+    reinit: () => { resetState(); init(); },
   };
 })();
