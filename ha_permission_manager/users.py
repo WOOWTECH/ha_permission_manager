@@ -5,7 +5,6 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .const import ADMIN_GROUP_ID
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -29,12 +28,8 @@ async def discover_users(hass: HomeAssistant) -> list[User]:
         if user.system_generated:
             continue
 
-        # FIXED: HA 2026.1 uses user.groups instead of user.group_ids
-        # user.groups is a list of Group objects, check if any has id == ADMIN_GROUP_ID
-        is_admin = any(
-            group.id == ADMIN_GROUP_ID
-            for group in (user.groups or [])
-        )
+        # Use HA's built-in is_admin property (handles is_owner + admin group check)
+        is_admin = user.is_admin
 
         users.append(
             User(

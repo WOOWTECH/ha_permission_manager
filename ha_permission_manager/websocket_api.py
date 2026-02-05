@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -31,7 +31,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
 def ws_get_panel_permissions(
     hass: HomeAssistant,
     connection: ActiveConnection,
-    msg: dict,
+    msg: dict[str, Any],
 ) -> None:
     """Return panel permissions for the current user.
 
@@ -42,10 +42,7 @@ def ws_get_panel_permissions(
     Level 3 = Edit (full access)
     """
     user_id = connection.user.id
-    is_admin = connection.user.is_owner or (
-        hasattr(connection.user, "groups")
-        and any(g.id == "system-admin" for g in (connection.user.groups or []))
-    )
+    is_admin = connection.user.is_admin
 
     permissions: dict[str, int] = {}
 
@@ -66,21 +63,20 @@ def ws_get_panel_permissions(
         perm_entities_found += 1
         attrs = entity.attributes
 
-        # Debug: Log first few entities to see what attributes are available
-        if perm_entities_found <= 3:
-            _LOGGER.warning(
-                "DEBUG: Entity %s attrs=%s",
-                entity_id,
-                dict(attrs) if attrs else "EMPTY"
-            )
-
+        # Validate user_id attribute
         entity_user_id = attrs.get("user_id")
+        if not isinstance(entity_user_id, str) or not entity_user_id:
+            continue
         if entity_user_id != user_id:
             continue
 
         matched_user += 1
 
-        if attrs.get("resource_type") != "panel":
+        # Validate resource_type
+        resource_type = attrs.get("resource_type")
+        if resource_type not in ("panel", "area", "label", "automation", "script", "custom", "lovelace"):
+            continue
+        if resource_type != "panel":
             continue
 
         matched_panel += 1
@@ -92,11 +88,12 @@ def ws_get_panel_permissions(
         else:
             panel_id = resource_id
 
-        # Get permission level
+        # Get permission level - fail secure (default to no access)
         try:
             level = int(entity.state)
         except (ValueError, TypeError):
-            level = 3  # Default to full access on error
+            level = 0  # Fail secure - no access
+            _LOGGER.warning("Invalid permission level for entity %s, defaulting to CLOSED", entity_id)
 
         # Admin users always get level 3 for permission_manager panel
         if is_admin and panel_id == "ha_permission_manager":
@@ -104,7 +101,7 @@ def ws_get_panel_permissions(
 
         permissions[panel_id] = level
 
-    _LOGGER.warning(
+    _LOGGER.debug(
         "Panel permissions for user %s (is_admin=%s): found=%d, matched_user=%d, matched_panel=%d, permissions=%s",
         user_id,
         is_admin,
@@ -115,10 +112,10 @@ def ws_get_panel_permissions(
     )
 
     # Return is_admin flag so frontend knows to skip filtering
+    # Note: user_id intentionally not included for security
     connection.send_result(msg["id"], {
         "permissions": permissions,
         "is_admin": is_admin,
-        "user_id": user_id,
     })
 
 
@@ -131,7 +128,7 @@ def ws_get_panel_permissions(
 def ws_get_all_permissions(
     hass: HomeAssistant,
     connection: ActiveConnection,
-    msg: dict,
+    msg: dict[str, Any],
 ) -> None:
     """Return all permissions for the current user.
 
@@ -140,13 +137,9 @@ def ws_get_all_permissions(
     - areas: dict of area_id -> permission_level
     - labels: dict of label_id -> permission_level
     - is_admin: bool
-    - user_id: str
     """
     user_id = connection.user.id
-    is_admin = connection.user.is_owner or (
-        hasattr(connection.user, "groups")
-        and any(g.id == "system-admin" for g in (connection.user.groups or []))
-    )
+    is_admin = connection.user.is_admin
 
     panels: dict[str, int] = {}
     areas: dict[str, int] = {}
@@ -162,17 +155,26 @@ def ws_get_all_permissions(
             continue
 
         attrs = entity.attributes
-        if attrs.get("user_id") != user_id:
+
+        # Validate user_id attribute
+        entity_user_id = attrs.get("user_id")
+        if not isinstance(entity_user_id, str) or not entity_user_id:
+            continue
+        if entity_user_id != user_id:
             continue
 
         resource_type = attrs.get("resource_type")
+        # Validate resource_type
+        if resource_type not in ("panel", "area", "label", "automation", "script", "custom", "lovelace"):
+            continue
         resource_id = attrs.get("resource_id", "")
 
-        # Get permission level
+        # Get permission level - fail secure (default to no access)
         try:
             level = int(entity.state)
         except (ValueError, TypeError):
-            level = 3  # Default to full access on error
+            level = 0  # Fail secure - no access
+            _LOGGER.warning("Invalid permission level for entity %s, defaulting to CLOSED", entity_id)
 
         if resource_type == "panel":
             if resource_id.startswith(PREFIX_PANEL):
@@ -200,10 +202,10 @@ def ws_get_all_permissions(
         user_id, is_admin, len(panels), len(areas), len(labels),
     )
 
+    # Note: user_id intentionally not included for security
     connection.send_result(msg["id"], {
         "panels": panels,
         "areas": areas,
         "labels": labels,
         "is_admin": is_admin,
-        "user_id": user_id,
     })
