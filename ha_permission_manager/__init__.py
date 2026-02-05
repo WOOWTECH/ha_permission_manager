@@ -144,8 +144,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
             elif action == "remove":
                 resource_id = f"{PREFIX_AREA}{area_id}"
                 await async_remove_entities_for_resource(hass, resource_id)
-        except Exception as err:
-            _LOGGER.error("Error handling area registry update: %s", err)
+        except Exception:
+            _LOGGER.exception("Error handling area registry update")
 
     async def _handle_label_registry_update(event: Event) -> None:
         """Handle label registry changes."""
@@ -167,8 +167,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
             elif action == "remove":
                 resource_id = f"{PREFIX_LABEL}{label_id}"
                 await async_remove_entities_for_resource(hass, resource_id)
-        except Exception as err:
-            _LOGGER.error("Error handling label registry update: %s", err)
+        except Exception:
+            _LOGGER.exception("Error handling label registry update")
 
     async def _handle_user_added(event: Event) -> None:
         """Handle new user added."""
@@ -181,8 +181,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
                 user = await hass.auth.async_get_user(user_id)
                 if user and not user.system_generated:
                     await async_add_entities_for_user(hass, user)
-        except Exception as err:
-            _LOGGER.error("Error handling user added event: %s", err)
+        except Exception:
+            _LOGGER.exception("Error handling user added event")
 
     async def _handle_user_removed(event: Event) -> None:
         """Handle user removed."""
@@ -192,8 +192,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
 
             if user_id:
                 await async_remove_entities_for_user(hass, user_id)
-        except Exception as err:
-            _LOGGER.error("Error handling user removed event: %s", err)
+        except Exception:
+            _LOGGER.exception("Error handling user removed event")
 
     async def _handle_user_updated(event: Event) -> None:
         """Handle user updated (including admin status and name changes)."""
@@ -220,8 +220,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
 
                     # Update permission entities (both name and admin status)
                     await async_update_user_info(hass, user_id, new_name=user_name, new_is_admin=is_admin)
-        except Exception as err:
-            _LOGGER.error("Error handling user updated event: %s", err)
+        except Exception:
+            _LOGGER.exception("Error handling user updated event")
 
     async def _handle_lovelace_updated(event: Event) -> None:
         """Handle lovelace dashboard changes (create/delete)."""
@@ -249,8 +249,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
                 await async_remove_entities_for_resource(hass, resource_id)
                 _LOGGER.info("Removed permission entities for deleted dashboard: %s", url_path)
 
-        except Exception as err:
-            _LOGGER.error("Error handling lovelace updated event: %s", err)
+        except Exception:
+            _LOGGER.exception("Error handling lovelace updated event")
 
     async def _handle_panels_updated(event: Event) -> None:
         """Handle panel registry changes - sync new/deleted panels."""
@@ -307,8 +307,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
                 await async_remove_entities_for_resource(hass, resource_id)
                 _LOGGER.info("Removed permission entities for deleted panel: %s", resource_id)
 
-        except Exception as err:
-            _LOGGER.error("Error handling panels updated event: %s", err)
+        except Exception:
+            _LOGGER.exception("Error handling panels updated event")
 
     # Subscribe to events
     unsub_area = hass.bus.async_listen(

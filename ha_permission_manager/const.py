@@ -1,16 +1,7 @@
 """Constants for ha_permission_manager."""
 import re
-from enum import IntEnum
 
 DOMAIN = "ha_permission_manager"
-
-# Permission levels
-class PermissionLevel(IntEnum):
-    """Permission levels for resources."""
-    CLOSED = 0   # Hidden / No Access
-    VIEW = 1     # Read Only
-    LIMITED = 2  # Control entities, no config changes
-    EDIT = 3     # Full Admin
 
 PERMISSION_OPTIONS = ["0", "1", "2", "3"]
 PERMISSION_LABELS = {
@@ -27,16 +18,6 @@ PREFIX_PANEL = "panel_"
 PREFIX_AUTOMATION = "automation_"
 PREFIX_SCRIPT = "script_"
 PREFIX_CUSTOM = "custom_"
-
-# Resource type names for display
-RESOURCE_TYPES = {
-    "area": "Areas",
-    "label": "Labels",
-    "panel": "Panels",
-    "automation": "Automations",
-    "script": "Scripts",
-    "custom": "Custom",
-}
 
 # Self-reference resource ID (for bootstrap protection)
 SELF_PANEL_ID = f"{PREFIX_PANEL}ha_permission_manager"
@@ -64,13 +45,6 @@ def sanitize_slug(name: str) -> str:
     slug = slug.strip('_')
     # Ensure non-empty
     return slug or 'unnamed'
-
-
-def build_entity_id(user_name: str, resource_type: str, resource_name: str) -> str:
-    """Build entity_id from components."""
-    user_slug = sanitize_slug(user_name)
-    resource_slug = sanitize_slug(resource_name)
-    return f"select.perm_{user_slug}_{resource_type}_{resource_slug}"
 
 
 def build_unique_id(user_id: str, resource_type: str, resource_id: str) -> str:

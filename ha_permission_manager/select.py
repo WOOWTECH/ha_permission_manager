@@ -1,8 +1,9 @@
 """Select platform for ha_permission_manager."""
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
@@ -11,6 +12,9 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
+
+if TYPE_CHECKING:
+    from homeassistant.auth.models import User as HAUser
 
 from .const import (
     ADMIN_GROUP_ID,
@@ -25,6 +29,9 @@ from .discovery import Resource, discover_all_resources
 from .users import User, discover_users, get_admin_user_ids
 
 _LOGGER = logging.getLogger(__name__)
+
+# Lock for thread-safe entity registration to prevent race conditions
+_entity_registration_lock = asyncio.Lock()
 
 
 # Core panels that are always protected (full access) for all users
@@ -109,47 +116,48 @@ async def async_add_entities_for_resource(
     resource_type: str,
 ) -> None:
     """Add permission entities for a new resource (for all users)."""
-    domain_data = hass.data.get(DOMAIN, {})
-    callback = domain_data.get("async_add_entities")
-    if callback is None:
-        _LOGGER.warning("Cannot add entities: async_add_entities callback not available")
-        return
+    async with _entity_registration_lock:
+        domain_data = hass.data.get(DOMAIN, {})
+        callback = domain_data.get("async_add_entities")
+        if callback is None:
+            _LOGGER.warning("Cannot add entities: async_add_entities callback not available")
+            return
 
-    # Check for duplicate resource
-    existing_ids = {r.id for r in domain_data.get("resources", [])}
-    if resource_id in existing_ids:
-        _LOGGER.debug("Resource %s already exists, skipping", resource_id)
-        return
+        # Check for duplicate resource
+        existing_ids = {r.id for r in domain_data.get("resources", [])}
+        if resource_id in existing_ids:
+            _LOGGER.debug("Resource %s already exists, skipping", resource_id)
+            return
 
-    users = domain_data.get("users", [])
-    admin_ids = get_admin_user_ids(users)
+        users = domain_data.get("users", [])
+        admin_ids = get_admin_user_ids(users)
 
-    resource = Resource(id=resource_id, name=resource_name, type=resource_type)
+        resource = Resource(id=resource_id, name=resource_name, type=resource_type)
 
-    # Add to stored resources
-    domain_data.setdefault("resources", []).append(resource)
+        # Add to stored resources
+        domain_data.setdefault("resources", []).append(resource)
 
-    entities: list[PermissionSelectEntity] = []
-    for user in users:
-        is_protected = is_protected_permission(user.id, resource_id, admin_ids)
+        entities: list[PermissionSelectEntity] = []
+        for user in users:
+            is_protected = is_protected_permission(user.id, resource_id, admin_ids)
 
-        entity = PermissionSelectEntity(
-            user=user,
-            resource=resource,
-            is_protected=is_protected,
-        )
-        entities.append(entity)
+            entity = PermissionSelectEntity(
+                user=user,
+                resource=resource,
+                is_protected=is_protected,
+            )
+            entities.append(entity)
 
-        # Store entity reference
-        domain_data["entities"][entity._attr_unique_id] = entity
+            # Store entity reference
+            domain_data["entities"][entity._attr_unique_id] = entity
 
-    if entities:
-        _LOGGER.info(
-            "Adding %d permission entities for new resource: %s",
-            len(entities),
-            resource_name,
-        )
-        callback(entities)
+        if entities:
+            _LOGGER.info(
+                "Adding %d permission entities for new resource: %s",
+                len(entities),
+                resource_name,
+            )
+            callback(entities)
 
 
 async def async_remove_entities_for_resource(
@@ -190,60 +198,61 @@ async def async_remove_entities_for_resource(
 
 async def async_add_entities_for_user(
     hass: HomeAssistant,
-    ha_user,
+    ha_user: HAUser,
 ) -> None:
     """Add permission entities for a new user (for all resources)."""
-    domain_data = hass.data.get(DOMAIN, {})
-    callback = domain_data.get("async_add_entities")
-    if callback is None:
-        _LOGGER.warning("Cannot add entities: async_add_entities callback not available")
-        return
+    async with _entity_registration_lock:
+        domain_data = hass.data.get(DOMAIN, {})
+        callback = domain_data.get("async_add_entities")
+        if callback is None:
+            _LOGGER.warning("Cannot add entities: async_add_entities callback not available")
+            return
 
-    # Check for duplicate user
-    existing_ids = {u.id for u in domain_data.get("users", [])}
-    if ha_user.id in existing_ids:
-        _LOGGER.debug("User %s already exists, skipping", ha_user.id)
-        return
+        # Check for duplicate user
+        existing_ids = {u.id for u in domain_data.get("users", [])}
+        if ha_user.id in existing_ids:
+            _LOGGER.debug("User %s already exists, skipping", ha_user.id)
+            return
 
-    # Check if admin
-    is_admin = any(
-        group.id == ADMIN_GROUP_ID
-        for group in (ha_user.groups or [])
-    )
-
-    user = User(
-        id=ha_user.id,
-        name=ha_user.name or "Unknown",
-        is_admin=is_admin,
-    )
-
-    # Add to stored users
-    domain_data.setdefault("users", []).append(user)
-
-    resources = domain_data.get("resources", [])
-    admin_ids = get_admin_user_ids(domain_data.get("users", []))
-
-    entities: list[PermissionSelectEntity] = []
-    for resource in resources:
-        is_protected = is_protected_permission(user.id, resource.id, admin_ids)
-
-        entity = PermissionSelectEntity(
-            user=user,
-            resource=resource,
-            is_protected=is_protected,
+        # Check if admin
+        is_admin = any(
+            group.id == ADMIN_GROUP_ID
+            for group in (ha_user.groups or [])
         )
-        entities.append(entity)
 
-        # Store entity reference
-        domain_data["entities"][entity._attr_unique_id] = entity
-
-    if entities:
-        _LOGGER.info(
-            "Adding %d permission entities for new user: %s",
-            len(entities),
-            user.name,
+        user = User(
+            id=ha_user.id,
+            name=ha_user.name or "Unknown",
+            is_admin=is_admin,
         )
-        callback(entities)
+
+        # Add to stored users
+        domain_data.setdefault("users", []).append(user)
+
+        resources = domain_data.get("resources", [])
+        admin_ids = get_admin_user_ids(domain_data.get("users", []))
+
+        entities: list[PermissionSelectEntity] = []
+        for resource in resources:
+            is_protected = is_protected_permission(user.id, resource.id, admin_ids)
+
+            entity = PermissionSelectEntity(
+                user=user,
+                resource=resource,
+                is_protected=is_protected,
+            )
+            entities.append(entity)
+
+            # Store entity reference
+            domain_data["entities"][entity._attr_unique_id] = entity
+
+        if entities:
+            _LOGGER.info(
+                "Adding %d permission entities for new user: %s",
+                len(entities),
+                user.name,
+            )
+            callback(entities)
 
 
 async def async_remove_entities_for_user(
