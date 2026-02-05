@@ -2,7 +2,7 @@
  * HA Permission Manager - Sidebar Filter
  * Hides panels user doesn't have access to
  *
- * v2.9.31 - Fixed state not resetting on logout/re-login
+ * v2.9.32 - Security hardening: removed debug objects and verbose logging
  */
 (function() {
   "use strict";
@@ -27,7 +27,6 @@
    * Reset all state (called when user changes or hass is recreated)
    */
   function resetState() {
-    console.log("[SidebarFilter] Resetting state");
     originalPanels = null;
     currentUserId = null;
     isAdmin = false;
@@ -73,7 +72,6 @@
 
     // Deep copy the original panels
     originalPanels = JSON.parse(JSON.stringify(hass.panels));
-    console.log("[SidebarFilter] Stored", Object.keys(originalPanels).length, "original panels");
     return originalPanels;
   }
 
@@ -92,8 +90,6 @@
       isAdmin = result.is_admin || false;
       currentUserId = result.user_id || null;
 
-      console.log("[SidebarFilter] Fetched permissions: is_admin=" + isAdmin + ", permissions:", result.permissions);
-
       return {
         permissions: result.permissions || {},
         is_admin: isAdmin,
@@ -109,10 +105,8 @@
    * Apply sidebar filtering
    */
   async function applySidebarFilter() {
-    console.log("[SidebarFilter] applySidebarFilter called");
     const haMain = document.querySelector("home-assistant");
     if (!haMain || !haMain.hass) {
-      console.warn("[SidebarFilter] haMain or hass not available");
       return;
     }
 
@@ -125,11 +119,9 @@
 
     // Fetch permissions from backend
     const { permissions, is_admin } = await fetchPermissions();
-    console.log("[SidebarFilter] Fetched: is_admin=" + is_admin + ", user_id=" + currentUserId + ", permissions=", JSON.stringify(permissions));
 
     // Admin users see all panels
     if (is_admin) {
-      console.log("[SidebarFilter] Admin user, showing all", Object.keys(originalPanels).length, "panels");
       haMain.hass = { ...haMain.hass, panels: { ...originalPanels } };
       return;
     }
@@ -167,7 +159,6 @@
 
     // Apply filtered panels
     haMain.hass = { ...haMain.hass, panels: filteredPanels };
-    console.log("[SidebarFilter] Applied filter: showing", Object.keys(filteredPanels).length, "panels, hidden", hiddenCount, ":", hiddenPanels);
   }
 
   /**
@@ -208,11 +199,9 @@
 
     // Only block if explicitly denied
     if (permissions[panelToCheck] === PERM_DENY) {
-      console.log("[SidebarFilter] Access denied for panel:", panelToCheck);
       showAccessDenied();
     } else {
       // 有權限，移除 Access Denied 並顯示原有內容
-      console.log("[SidebarFilter] Access granted for panel:", panelToCheck);
       hideAccessDenied();
     }
   }
@@ -222,11 +211,8 @@
    * v2.9.27: Restored standalone mode with header and hamburger button
    */
   function showAccessDenied() {
-    console.log("[SidebarFilter] showAccessDenied() called - v2.9.27");
-
     // 檢查是否已存在
     if (document.querySelector("ha-access-denied")) {
-      console.log("[SidebarFilter] showAccessDenied: already exists, skipping");
       return;
     }
 
@@ -237,18 +223,12 @@
     const haSidebar = haDrawer?.querySelector("ha-sidebar");
     const partialPanelResolver = haDrawer?.querySelector("partial-panel-resolver");
 
-    console.log("[SidebarFilter] DOM check: haMain=" + !!haMain +
-      ", homeAssistantMain=" + !!homeAssistantMain +
-      ", haDrawer=" + !!haDrawer +
-      ", partialPanelResolver=" + !!partialPanelResolver);
-
     // 載入組件腳本
     if (!customElements.get("ha-access-denied")) {
       const script = document.createElement("script");
       script.type = "module";
       script.src = "/local/ha_access_denied.js?v=" + Date.now();
       document.head.appendChild(script);
-      console.log("[SidebarFilter] Loading ha_access_denied.js");
     }
 
     // 計算側邊欄寬度
@@ -279,8 +259,6 @@
     if (partialPanelResolver) {
       partialPanelResolver.style.visibility = "hidden";
     }
-
-    console.log("[SidebarFilter] ✓ Access denied displayed in standalone mode (sidebar width: " + sidebarWidth + "px)");
   }
 
   /**
@@ -288,8 +266,6 @@
    * v2.9.27: Fixed - use removeProperty for more reliable restoration
    */
   function hideAccessDenied() {
-    console.log("[SidebarFilter] hideAccessDenied() called - v2.9.27");
-
     // 獲取 DOM 引用
     const haMain = document.querySelector("home-assistant");
     const homeAssistantMain = haMain?.shadowRoot?.querySelector("home-assistant-main");
@@ -300,7 +276,6 @@
     const accessDeniedInResolver = partialPanelResolver?.querySelector("ha-access-denied");
     if (accessDeniedInResolver) {
       accessDeniedInResolver.remove();
-      console.log("[SidebarFilter] Removed access denied from partial-panel-resolver");
 
       // 恢復原有內容的顯示 - 使用 removeProperty 更可靠
       if (partialPanelResolver) {
@@ -308,7 +283,6 @@
           child.style.removeProperty("display");
           child.style.removeProperty("visibility");
         });
-        console.log("[SidebarFilter] Restored original panel content");
       }
     }
 
@@ -316,7 +290,6 @@
     const accessDeniedInBody = document.querySelector("ha-access-denied");
     if (accessDeniedInBody) {
       accessDeniedInBody.remove();
-      console.log("[SidebarFilter] Removed access denied from document.body");
 
       // 恢復 partial-panel-resolver 的可見性
       if (partialPanelResolver) {
@@ -353,7 +326,6 @@
       // Only care about permissions for the current user
       const permUserId = newState.attributes?.user_id;
       if (!permUserId) {
-        console.log("[SidebarFilter] Permission changed but no user_id attribute:", entityId);
         return;
       }
 
@@ -368,11 +340,8 @@
       }
 
       if (permUserId !== currentUserId) {
-        console.log("[SidebarFilter] Permission changed for different user:", permUserId, "current:", currentUserId);
         return;
       }
-
-      console.log("[SidebarFilter] Permission changed for current user:", entityId, "->", newState.state);
 
       // Small delay to ensure state is fully propagated
       await new Promise(r => setTimeout(r, 100));
@@ -384,14 +353,11 @@
 
     // Listen for user_updated events (when admin status changes in HA)
     hass.connection.subscribeEvents(async (event) => {
-      console.log("[SidebarFilter] User updated event received:", event.data);
-
       // Check if current user's admin status changed
       const oldIsAdmin = isAdmin;
       const { is_admin } = await fetchPermissions();
 
       if (oldIsAdmin !== is_admin) {
-        console.log("[SidebarFilter] Admin status changed via user_updated:", oldIsAdmin, "->", is_admin);
         // Force reload to reset all state
         location.reload();
         return;
@@ -403,14 +369,11 @@
 
     // Listen for auth events (login/logout, permission changes)
     hass.connection.subscribeEvents(async (event) => {
-      console.log("[SidebarFilter] Auth event received:", event.data);
-
       // Re-check admin status and permissions
       const oldIsAdmin = isAdmin;
       const { is_admin } = await fetchPermissions();
 
       if (oldIsAdmin !== is_admin) {
-        console.log("[SidebarFilter] Admin status changed via auth event:", oldIsAdmin, "->", is_admin);
         location.reload();
         return;
       }
@@ -421,7 +384,6 @@
     // Listen for lovelace dashboard changes (create/delete)
     hass.connection.subscribeEvents(async (event) => {
       const action = event.data?.action;
-      console.log("[SidebarFilter] Lovelace updated event:", action, event.data);
 
       if (action === "create" || action === "delete") {
         // Wait a bit for backend to create/remove permission entities
@@ -431,7 +393,6 @@
         const haMain = document.querySelector("home-assistant");
         if (haMain && haMain.hass && haMain.hass.panels) {
           originalPanels = JSON.parse(JSON.stringify(haMain.hass.panels));
-          console.log("[SidebarFilter] Refreshed originalPanels:", Object.keys(originalPanels).length, "panels");
         }
 
         // Re-apply filter with new permissions
@@ -445,15 +406,12 @@
       const { is_admin } = await fetchPermissions();
 
       if (oldIsAdmin !== is_admin) {
-        console.log("[SidebarFilter] Admin status changed (poll):", oldIsAdmin, "->", is_admin);
         location.reload();
       }
     }, 5000);
 
     // Listen for language changes via core_config_updated event
     hass.connection.subscribeEvents(async (event) => {
-      console.log("[SidebarFilter] Core config updated event received");
-
       // Get current language from hass object (more reliable than event data)
       const haMain = document.querySelector("home-assistant");
       const newLanguage = haMain?.hass?.language || "en";
@@ -463,14 +421,11 @@
         return;
       }
 
-      console.log("[SidebarFilter] Language changed:", lastLanguage, "->", newLanguage);
       lastLanguage = newLanguage;
 
       // Update sidebar title via DOM manipulation (more reliable than hass.panels)
       updateSidebarTitle();
     }, "core_config_updated");
-
-    console.log("[SidebarFilter] Subscribed to changes (state_changed, user_updated, auth, lovelace_updated, core_config_updated)");
   }
 
   /**
@@ -516,7 +471,6 @@
         const textSpan = item.querySelector(".item-text");
         if (textSpan && textSpan.textContent !== title) {
           textSpan.textContent = title;
-          console.log("[SidebarFilter] ✓ Updated sidebar title to:", title);
           updated = true;
         } else if (textSpan && textSpan.textContent === title) {
           updated = true; // Already correct
@@ -534,13 +488,11 @@
   function updateSidebarTitleViaHass(lang) {
     const haMain = document.querySelector("home-assistant");
     if (!haMain?.hass?.panels) {
-      console.log("[SidebarFilter] updateSidebarTitleViaHass: hass.panels not ready");
       return false;
     }
 
     const panel = haMain.hass.panels.ha_permission_manager;
     if (!panel) {
-      console.log("[SidebarFilter] updateSidebarTitleViaHass: panel not found");
       return false;
     }
 
@@ -548,7 +500,6 @@
 
     // Only update if title actually changed
     if (panel.title === title) {
-      console.log("[SidebarFilter] Sidebar title already correct:", title);
       return true;
     }
 
@@ -559,7 +510,6 @@
     // Trigger reactive update by assigning new hass object
     haMain.hass = { ...haMain.hass, panels: updatedPanels };
 
-    console.log("[SidebarFilter] ✓ Updated sidebar title via hass.panels:", title);
     return true;
   }
 
@@ -573,7 +523,6 @@
 
     // 嘗試立即更新（使用 DOM 操作）
     if (updateSidebarTitle()) {
-      console.log("[SidebarFilter] Sidebar title updated on first attempt");
       return;
     }
 
@@ -581,10 +530,8 @@
     const interval = setInterval(() => {
       attempts++;
       if (updateSidebarTitle()) {
-        console.log("[SidebarFilter] Sidebar title updated after", attempts, "attempts");
         clearInterval(interval);
       } else if (attempts >= maxAttempts) {
-        console.log("[SidebarFilter] Sidebar title update failed after", maxAttempts, "attempts");
         clearInterval(interval);
       }
     }, 2000);
@@ -625,7 +572,6 @@
 
       // Check if home-assistant element was recreated
       if (newHaElement && newHaElement !== currentHaElement) {
-        console.log("[SidebarFilter] home-assistant element recreated, reinitializing");
         currentHaElement = newHaElement;
         resetState();
         setTimeout(init, 500);
@@ -633,7 +579,6 @@
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
-    console.log("[SidebarFilter] Hass observer setup complete");
   }
 
   /**
@@ -645,14 +590,11 @@
     const newUserId = haMain?.hass?.user?.id;
 
     if (initialized && newUserId && currentUserId && newUserId !== currentUserId) {
-      console.log("[SidebarFilter] User changed from", currentUserId, "to", newUserId, "- resetting state");
       resetState();
     }
 
     if (initialized) return;
     initialized = true;
-
-    console.log("[SidebarFilter] Initializing v2.9.31");
 
     // Wait a bit for HA to fully load
     await new Promise(r => setTimeout(r, 500));
@@ -661,7 +603,6 @@
     const hass = await waitForHass();
     if (hass) {
       lastLanguage = hass.language || "en";
-      console.log("[SidebarFilter] Initial language:", lastLanguage);
     }
 
     await applySidebarFilter();
@@ -673,8 +614,6 @@
     if (!updateSidebarTitleViaHass(lastLanguage)) {
       initSidebarTitle(); // Fallback to DOM manipulation
     }
-
-    console.log("[SidebarFilter] Initialization complete");
   }
 
   // Start when DOM is ready
@@ -689,15 +628,5 @@
     setTimeout(init, 500);
   }
 
-  // Expose for debugging
-  window.__permissionManagerSidebar = {
-    refresh: applySidebarFilter,
-    getOriginalPanels: () => originalPanels,
-    getState: () => ({ isAdmin, currentUserId, initialized, lastLanguage }),
-    updateSidebarTitle: updateSidebarTitle,
-    updateSidebarTitleViaHass: updateSidebarTitleViaHass,
-    initSidebarTitle: initSidebarTitle,
-    resetState: resetState,
-    reinit: () => { resetState(); init(); },
-  };
+  // Debug object removed for security - do not expose internal state in production
 })();

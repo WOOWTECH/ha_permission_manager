@@ -2,7 +2,7 @@
  * HA Permission Manager - Lovelace Filter
  * Hides dashboard content for users with restricted permissions
  *
- * v2.7.9 - Fixed permission check logic
+ * v2.7.10 - Security hardening: removed debug objects and verbose logging
  */
 (function() {
   "use strict";
@@ -58,13 +58,6 @@
       isAdmin = result.is_admin || false;
       permissions = result;
 
-      console.log("[LovelaceFilter] v2.7.9 Fetched permissions:", {
-        is_admin: isAdmin,
-        panels: result.panels,
-        areas: result.areas,
-        labels: result.labels,
-      });
-
       return result;
     } catch (err) {
       console.error("[LovelaceFilter] Failed to fetch permissions:", err);
@@ -79,34 +72,29 @@
   function shouldShowContent() {
     // Admin always sees everything
     if (isAdmin) {
-      console.log("[LovelaceFilter] Admin user - show content");
       return true;
     }
 
     // No permissions loaded yet - fail-secure: hide content
     if (!permissions) {
-      console.log("[LovelaceFilter] No permissions loaded - hide content (fail-secure)");
       return false;
     }
 
     // Check lovelace panel permission specifically
     // The panel key could be "lovelace" or other variants
     const panelKeys = Object.keys(permissions.panels || {});
-    console.log("[LovelaceFilter] Panel keys:", panelKeys);
 
     // Find lovelace permission
     let lovelaceLevel = null;
     for (const key of panelKeys) {
       if (key === "lovelace" || key.includes("lovelace")) {
         lovelaceLevel = permissions.panels[key];
-        console.log(`[LovelaceFilter] Found lovelace key "${key}" with level ${lovelaceLevel}`);
         break;
       }
     }
 
     // If lovelace permission is 0 (DENY), hide content
     if (lovelaceLevel !== null && lovelaceLevel === PERM_DENY) {
-      console.log("[LovelaceFilter] Lovelace permission is DENY - hide content");
       return false;
     }
 
@@ -116,11 +104,8 @@
       const hasAreaAccess = Object.values(permissions.areas || {}).some(v => v > PERM_DENY);
       const hasLabelAccess = Object.values(permissions.labels || {}).some(v => v > PERM_DENY);
 
-      console.log(`[LovelaceFilter] lovelace=${lovelaceLevel}, hasAreaAccess=${hasAreaAccess}, hasLabelAccess=${hasLabelAccess}`);
-
       // If no area and no label access, hide content
       if (!hasAreaAccess && !hasLabelAccess) {
-        console.log("[LovelaceFilter] No area/label access - hide content");
         return false;
       }
 
@@ -128,7 +113,6 @@
     }
 
     // Default: fail-secure - hide content if no explicit lovelace permission found
-    console.log("[LovelaceFilter] No lovelace permission found - hide content (fail-secure)");
     return false;
   }
 
@@ -144,42 +128,35 @@
     }
 
     hideAttempts++;
-    console.log(`[LovelaceFilter] Hiding lovelace content (attempt ${hideAttempts})`);
 
     // Traverse Shadow DOM to find hui-root
     const haMain = document.querySelector("home-assistant");
     if (!haMain || !haMain.shadowRoot) {
-      console.log("[LovelaceFilter] No home-assistant shadowRoot");
       return;
     }
 
     const homeAssistantMain = haMain.shadowRoot.querySelector("home-assistant-main");
     if (!homeAssistantMain || !homeAssistantMain.shadowRoot) {
-      console.log("[LovelaceFilter] No home-assistant-main shadowRoot");
       return;
     }
 
     const haDrawer = homeAssistantMain.shadowRoot.querySelector("ha-drawer");
     if (!haDrawer) {
-      console.log("[LovelaceFilter] No ha-drawer");
       return;
     }
 
     const partialPanelResolver = haDrawer.querySelector("partial-panel-resolver");
     if (!partialPanelResolver || !partialPanelResolver.shadowRoot) {
-      console.log("[LovelaceFilter] No partial-panel-resolver shadowRoot");
       return;
     }
 
     const haPanelLovelace = partialPanelResolver.shadowRoot.querySelector("ha-panel-lovelace");
     if (!haPanelLovelace || !haPanelLovelace.shadowRoot) {
-      console.log("[LovelaceFilter] No ha-panel-lovelace shadowRoot");
       return;
     }
 
     const huiRoot = haPanelLovelace.shadowRoot.querySelector("hui-root");
     if (!huiRoot || !huiRoot.shadowRoot) {
-      console.log("[LovelaceFilter] No hui-root shadowRoot");
       return;
     }
 
@@ -187,7 +164,6 @@
     const viewContainer = huiRoot.shadowRoot.querySelector("#view");
     if (viewContainer) {
       viewContainer.style.display = "none";
-      console.log("[LovelaceFilter] Hidden #view container");
     }
 
     // Hide the toolbar action items (right side buttons including ... menu)
@@ -198,7 +174,6 @@
       actionItems.forEach(item => {
         item.style.display = "none";
       });
-      console.log(`[LovelaceFilter] Hidden ${actionItems.length} toolbar action items`);
     }
 
     // Also check for app-toolbar and its action items
@@ -208,7 +183,6 @@
       toolbarActions.forEach(item => {
         item.style.display = "none";
       });
-      console.log(`[LovelaceFilter] Hidden ${toolbarActions.length} app-toolbar items`);
     }
 
     // Add "no access" message if not already there
@@ -227,13 +201,26 @@
         z-index: 1000;
         padding: 20px;
       `;
-      messageContainer.innerHTML = `
-        <div style="margin-bottom: 10px;">
-          <ha-icon icon="mdi:shield-lock" style="--mdc-icon-size: 48px;"></ha-icon>
-        </div>
-        <div>無可用內容</div>
-        <div style="font-size: 14px; margin-top: 8px;">請聯繫管理員獲取訪問權限</div>
-      `;
+
+      // Build DOM structure safely without innerHTML (security fix)
+      const iconWrapper = document.createElement("div");
+      iconWrapper.style.marginBottom = "10px";
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", "mdi:shield-lock");
+      icon.style.cssText = "--mdc-icon-size: 48px;";
+      iconWrapper.appendChild(icon);
+
+      const titleDiv = document.createElement("div");
+      titleDiv.textContent = "\u7121\u53EF\u7528\u5167\u5BB9"; // "無可用內容"
+
+      const subtitleDiv = document.createElement("div");
+      subtitleDiv.style.cssText = "font-size: 14px; margin-top: 8px;";
+      subtitleDiv.textContent = "\u8ACB\u806F\u7E6B\u7BA1\u7406\u54E1\u7372\u53D6\u8A2A\u554F\u6B0A\u9650"; // "請聯繫管理員獲取訪問權限"
+
+      messageContainer.appendChild(iconWrapper);
+      messageContainer.appendChild(titleDiv);
+      messageContainer.appendChild(subtitleDiv);
+
       document.body.appendChild(messageContainer);
     }
 
@@ -245,8 +232,6 @@
    */
   function removeContentHiding() {
     if (!contentHidden) return;
-
-    console.log("[LovelaceFilter] Removing content hiding");
 
     // Remove message
     const msg = document.getElementById("perm-manager-no-access-msg");
@@ -321,12 +306,9 @@
       const entityId = event.data?.entity_id;
       if (!entityId || !(entityId.startsWith("select.perm_") || entityId.startsWith("select.permission_manager_"))) return;
 
-      console.log("[LovelaceFilter] Permission changed, re-checking");
       await fetchAllPermissions();
       checkAndApplyFilter();
     }, "state_changed");
-
-    console.log("[LovelaceFilter] Subscribed to permission changes");
   }
 
   /**
@@ -335,8 +317,6 @@
   async function init() {
     if (initialized) return;
     initialized = true;
-
-    console.log("[LovelaceFilter] Initializing v2.7.9");
 
     // Wait for HA to fully load
     await new Promise(r => setTimeout(r, 2000));
@@ -360,8 +340,6 @@
       }
     });
     observer.observe(document.body, { childList: true, subtree: true });
-
-    console.log("[LovelaceFilter] Initialization complete");
   }
 
   // Start when DOM is ready
@@ -371,17 +349,5 @@
     setTimeout(init, 2000);
   }
 
-  // Expose for debugging
-  window.__permissionManagerLovelace = {
-    refresh: checkAndApplyFilter,
-    getPermissions: () => permissions,
-    isAdmin: () => isAdmin,
-    shouldShowContent: shouldShowContent,
-    hideContent: hideLovelaceContent,
-    forceHide: () => {
-      isAdmin = false;
-      permissions = { panels: { lovelace: 0 }, areas: {}, labels: {} };
-      hideLovelaceContent();
-    }
-  };
+  // Debug object removed for security - do not expose internal state in production
 })();

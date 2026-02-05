@@ -267,7 +267,7 @@ const PERM_EDIT = 3;
 /**
  * Fetch panel permissions for current user via WebSocket
  * @param {Object} hass - Home Assistant object
- * @returns {Promise<Object>} Map of panel_id -> permission_level
+ * @returns {Promise<Object>} Map of panel_id -> permission_level, empty object on error (fail-secure)
  */
 async function fetchPanelPermissions(hass) {
   try {
@@ -276,8 +276,8 @@ async function fetchPanelPermissions(hass) {
     });
     return result.permissions || {};
   } catch (err) {
-    console.error("[PermissionManager] Failed to fetch panel permissions:", err);
-    return null; // null = fail-open (allow access)
+    console.warn("[PermissionManager] Failed to fetch panel permissions, defaulting to CLOSED (fail-secure):", err.message || err);
+    return {}; // Empty object = fail-secure (no access granted)
   }
 }
 
@@ -288,9 +288,16 @@ async function fetchPanelPermissions(hass) {
  * @returns {boolean} True if access allowed (level >= 1)
  */
 function canAccessPanel(permissions, panelId) {
-  if (!permissions) return true; // Fail-open
+  // Fail-secure: if permissions is null/undefined or empty, deny access
+  if (!permissions || Object.keys(permissions).length === 0) {
+    console.warn("[PermissionManager] No permissions available, denying access (fail-secure)");
+    return false;
+  }
   const level = permissions[panelId];
-  if (level === undefined) return true; // No permission set = allow
+  // Fail-secure: if permission level not set for this panel, deny access
+  if (level === undefined) {
+    return false;
+  }
   return level >= PERM_VIEW;
 }
 

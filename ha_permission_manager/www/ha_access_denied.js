@@ -1,7 +1,7 @@
 /**
  * HA Permission Manager - Access Denied Panel
  * Shown when user navigates to a panel they don't have access to
- * v2.9.30 - Fixed sidebar toggle using hass-toggle-menu event
+ * v2.9.31 - Security hardening: removed verbose logging
  */
 import {
   LitElement,
@@ -89,18 +89,12 @@ class HaAccessDenied extends LitElement {
    * This works for both desktop (expand/collapse) and mobile (drawer open/close)
    */
   _toggleSidebar() {
-    console.log("[AccessDenied] _toggleSidebar() called");
-
     const haDrawer = this._getHaDrawer();
     const haSidebar = haDrawer?.querySelector("ha-sidebar");
 
     if (!haSidebar) {
-      console.warn("[AccessDenied] ha-sidebar not found");
       return;
     }
-
-    const currentWidth = haSidebar.offsetWidth;
-    console.log("[AccessDenied] Dispatching hass-toggle-menu, current sidebarWidth=" + currentWidth);
 
     // Dispatch the same event that HA native hamburger button uses
     // This event is handled by home-assistant-main and properly toggles the sidebar
@@ -173,7 +167,6 @@ class HaAccessDenied extends LitElement {
       // v2.9.28: Add ResizeObserver to track actual width changes
       // This catches sidebar expand/collapse that doesn't trigger attribute changes
       this._resizeObserver = new ResizeObserver(() => {
-        console.log("[AccessDenied] ResizeObserver triggered, sidebarWidth=" + haSidebar.offsetWidth);
         this._updatePosition();
       });
       this._resizeObserver.observe(haSidebar);
