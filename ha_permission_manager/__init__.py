@@ -122,7 +122,6 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
         async_remove_entities_for_user,
         async_update_user_info,
     )
-    from .const import ADMIN_GROUP_ID
 
     async def _handle_area_registry_update(event: Event) -> None:
         """Handle area registry changes."""
@@ -205,11 +204,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
                 # Get current user info from auth
                 user = await hass.auth.async_get_user(user_id)
                 if user and not user.system_generated:
-                    # Check if user is now admin
-                    is_admin = any(
-                        group.id == ADMIN_GROUP_ID
-                        for group in (user.groups or [])
-                    )
+                    # Check if user is now admin - use HA built-in property
+                    is_admin = user.is_admin
                     # Get user name
                     user_name = user.name or "Unknown"
 

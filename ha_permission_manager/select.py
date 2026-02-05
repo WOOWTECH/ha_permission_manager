@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from homeassistant.auth.models import User as HAUser
 
 from .const import (
-    ADMIN_GROUP_ID,
     DOMAIN,
     PERMISSION_LABELS,
     PERMISSION_OPTIONS,
@@ -214,11 +213,8 @@ async def async_add_entities_for_user(
             _LOGGER.debug("User %s already exists, skipping", ha_user.id)
             return
 
-        # Check if admin
-        is_admin = any(
-            group.id == ADMIN_GROUP_ID
-            for group in (ha_user.groups or [])
-        )
+        # Check if admin - use HA built-in property
+        is_admin = ha_user.is_admin
 
         user = User(
             id=ha_user.id,
