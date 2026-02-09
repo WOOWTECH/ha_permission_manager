@@ -13,3 +13,6 @@ venv/
 *.log
 .DS_Store
 .claude
+playwright_test_info.md
+ha_area_control/
+ha_label_control/
