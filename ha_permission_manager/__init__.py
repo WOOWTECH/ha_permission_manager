@@ -26,6 +26,11 @@ from .const import (
     PREFIX_AREA,
     PREFIX_LABEL,
     PREFIX_PANEL,
+    # Control Panel constants
+    CONTROL_PANEL_URL,
+    CONTROL_PANEL_TITLE,
+    CONTROL_PANEL_TITLE_ZH,
+    CONTROL_PANEL_ICON,
 )
 from .websocket_api import async_register_websocket_api
 
@@ -40,6 +45,15 @@ def _get_panel_title(hass: HomeAssistant) -> str:
     if language.startswith("zh"):
         return PANEL_TITLE_ZH
     return PANEL_TITLE
+
+
+def _get_control_panel_title(hass: HomeAssistant) -> str:
+    """Get control panel title based on HA language setting."""
+    language = hass.config.language or "en"
+    if language.startswith("zh"):
+        return CONTROL_PANEL_TITLE_ZH
+    return CONTROL_PANEL_TITLE
+
 
 # Key for frontend panels storage (internal HA structure)
 _FRONTEND_PANELS_KEY = "frontend_panels"
@@ -67,7 +81,7 @@ EVENT_PANELS_UPDATED = "panels_updated"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Permission Manager from a config entry."""
-    _LOGGER.info("Setting up ha_permission_manager v2.9.1")
+    _LOGGER.info("Setting up ha_permission_manager v3.0.0")
 
     # Initialize data storage
     hass.data.setdefault(DOMAIN, {})
@@ -104,8 +118,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        # Remove panel
+        # Remove panels
         async_remove_panel(hass, PANEL_URL)
+        async_remove_panel(hass, CONTROL_PANEL_URL)
 
         # Clean up stored data
         hass.data.pop(DOMAIN, None)
@@ -269,8 +284,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
             # Build set of current panel IDs (with prefix)
             current_panel_ids = set()
             for panel_id, panel in current_panels.items():
-                # Skip our own panel
-                if panel_id == "ha_permission_manager":
+                # Skip our own panels
+                if panel_id in ("ha_permission_manager", CONTROL_PANEL_URL):
                     continue
                 resource_id = f"{PREFIX_PANEL}{panel_id}"
                 current_panel_ids.add(resource_id)
@@ -296,9 +311,10 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
                     _LOGGER.info("Added permission entities for new panel: %s (%s)", title, panel_id)
 
             # Find deleted panels (in stored but not in current)
-            # Note: We need to exclude our own panel from deletion check
+            # Note: We need to exclude our own panels from deletion check
             self_panel_id = f"{PREFIX_PANEL}ha_permission_manager"
-            deleted_panel_ids = stored_panel_ids - current_panel_ids - {self_panel_id}
+            control_panel_id = f"{PREFIX_PANEL}{CONTROL_PANEL_URL}"
+            deleted_panel_ids = stored_panel_ids - current_panel_ids - {self_panel_id, control_panel_id}
             for resource_id in deleted_panel_ids:
                 await async_remove_entities_for_resource(hass, resource_id)
                 _LOGGER.info("Removed permission entities for deleted panel: %s", resource_id)
@@ -344,7 +360,7 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
 
 
 async def _async_register_panel(hass: HomeAssistant) -> None:
-    """Register the frontend panel."""
+    """Register the frontend panels."""
     # Register static path for JS files (skip if already registered)
     try:
         await hass.http.async_register_static_paths([
@@ -376,12 +392,20 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
                 ),
                 False,
             ),
+            # Unified Control Panel JS
+            StaticPathConfig(
+                "/local/ha_control_panel.js",
+                hass.config.path(
+                    "custom_components/ha_permission_manager/www/ha_control_panel.js"
+                ),
+                False,
+            ),
         ])
     except RuntimeError:
         # Path already registered from previous load
         _LOGGER.debug("Static path already registered, skipping")
 
-    # Register the panel using the built-in panel API
+    # Register the Permission Manager admin panel
     # Only register if not already registered
     if PANEL_URL not in _get_frontend_panels(hass):
         async_register_built_in_panel(
@@ -399,8 +423,26 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
             require_admin=True,
         )
 
+    # Register the unified Control Panel (for all users)
+    # This replaces the separate ha_area_control and ha_label_control panels
+    if CONTROL_PANEL_URL not in _get_frontend_panels(hass):
+        async_register_built_in_panel(
+            hass,
+            component_name="custom",
+            sidebar_title=_get_control_panel_title(hass),
+            sidebar_icon=CONTROL_PANEL_ICON,
+            frontend_url_path=CONTROL_PANEL_URL,
+            config={
+                "_panel_custom": {
+                    "name": "ha-control-panel",
+                    "module_url": f"/local/ha_control_panel.js?v={PANEL_VERSION}",
+                }
+            },
+            require_admin=False,
+        )
+
     # Register sidebar filter as extra JS (runs on every page)
     # Use version query param for cache busting
     add_extra_js_url(hass, f"/local/ha_sidebar_filter.js?v={PANEL_VERSION}")
 
-    _LOGGER.debug("Frontend panel registered")
+    _LOGGER.debug("Frontend panels registered")
