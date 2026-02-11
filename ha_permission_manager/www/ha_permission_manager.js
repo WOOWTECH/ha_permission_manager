@@ -150,6 +150,10 @@ const I18N = {
       labels: "Labels",
       panels: "Panels",
     },
+    resourceDescriptions: {
+      areas: "Controls which areas appear in the Control Panel. The Control Panel is automatically created by Permission Manager and cannot be customized by users.",
+      labels: "Controls which labels appear in the Control Panel. The Control Panel is automatically created by Permission Manager and cannot be customized by users.",
+    },
     accessDenied: "Access Denied",
     accessDeniedMessage: "You don't have permission to view this panel.",
     returnHome: "Return to Home",
@@ -176,6 +180,10 @@ const I18N = {
       areas: "区域",
       labels: "标签",
       panels: "面板",
+    },
+    resourceDescriptions: {
+      areas: "控制哪些区域会显示在控制面板中。控制面板由权限管理器自动创建，用户无法自定义。",
+      labels: "控制哪些标签会显示在控制面板中。控制面板由权限管理器自动创建，用户无法自定义。",
     },
     accessDenied: "访问被拒绝",
     accessDeniedMessage: "您没有权限查看此面板。",
@@ -204,6 +212,10 @@ const I18N = {
       labels: "標籤",
       panels: "面板",
     },
+    resourceDescriptions: {
+      areas: "控制哪些區域會顯示在控制面板中。控制面板由權限管理器自動建立，用戶無法自訂。",
+      labels: "控制哪些標籤會顯示在控制面板中。控制面板由權限管理器自動建立，用戶無法自訂。",
+    },
     accessDenied: "存取被拒絕",
     accessDeniedMessage: "您沒有權限檢視此面板。",
     returnHome: "返回首頁",
@@ -228,7 +240,8 @@ const PERMISSION_LEVELS = [
 ];
 
 // Resource type configuration (keys match backend resource types with 's' suffix)
-const RESOURCE_TYPE_KEYS = ["areas", "labels", "panels"];
+// Order: Panels first (most commonly restricted), then Areas, then Labels
+const RESOURCE_TYPE_KEYS = ["panels", "areas", "labels"];
 const RESOURCE_TYPE_ICONS = {
   areas: "mdi:floor-plan",
   labels: "mdi:tag",
@@ -583,6 +596,25 @@ class HaPermissionManager extends LitElement {
         background: var(--secondary-background-color, #f5f5f5);
         padding: 4px 10px;
         border-radius: 12px;
+      }
+
+      .card-description {
+        padding: 12px 16px;
+        background: rgba(3, 155, 229, 0.08);
+        border-left: 3px solid var(--info-color, #039be5);
+        color: var(--secondary-text-color, #757575);
+        font-size: 13px;
+        line-height: 1.5;
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .card-description ha-icon {
+        --mdc-icon-size: 18px;
+        flex-shrink: 0;
+        color: var(--info-color, #039be5);
+        margin-top: 1px;
       }
 
       .table-container {
@@ -987,6 +1019,15 @@ class HaPermissionManager extends LitElement {
                   <span>${currentTab?.label || i18n.resources}</span>
                   <span class="count">${resources.length} ${i18n.items}</span>
                 </div>
+
+                ${(currentTab?.key === 'areas' || currentTab?.key === 'labels') && i18n.resourceDescriptions?.[currentTab.key]
+                  ? html`
+                      <div class="card-description">
+                        <ha-icon icon="mdi:information-outline"></ha-icon>
+                        <span>${i18n.resourceDescriptions[currentTab.key]}</span>
+                      </div>
+                    `
+                  : ''}
 
                 ${resources.length > 0
                   ? html`
