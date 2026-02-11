@@ -23,11 +23,11 @@ _LOGGER = logging.getLogger(__name__)
 # Input validation pattern for IDs
 VALID_ID_PATTERN = re.compile(r'^[a-zA-Z0-9_-]+$')
 
-# Permission levels
+# Permission levels (2-level model)
+# Level 0 = Closed (hidden, no access)
+# Level 1 = View (full access - can view and control)
 PERM_CLOSED = 0
 PERM_VIEW = 1
-PERM_LIMITED = 2
-PERM_EDIT = 3
 
 # Resource types
 PERM_AREA_TYPE = "area"
@@ -177,7 +177,7 @@ async def websocket_get_permitted_areas(
                 "name": area.name,
                 "icon": area.icon,
                 "entity_count": entity_counts.get(area.id, 0),
-                "permission_level": 3,  # Edit level for admin
+                "permission_level": 1,  # Full access for admin
             })
 
         _LOGGER.info("Admin user %s gets all %d areas", user.name, len(areas))
@@ -338,7 +338,7 @@ async def websocket_get_permitted_labels(
                 "icon": label.icon,
                 "color": label.color,
                 "entity_count": entity_counts.get(label.label_id, 0),
-                "permission_level": 3,  # Edit level for admin
+                "permission_level": 1,  # Full access for admin
             })
 
         connection.send_result(msg["id"], {"labels": labels})
@@ -417,11 +417,9 @@ def ws_get_panel_permissions(
 ) -> None:
     """Return panel permissions for the current user.
 
-    Returns dict of panel_id -> permission_level (0, 1, 2, 3)
-    Level 0 = Deny (hidden)
-    Level 1 = View (read-only)
-    Level 2 = Limited (same as Edit in Phase 1)
-    Level 3 = Edit (full access)
+    Returns dict of panel_id -> permission_level (0 or 1)
+    Level 0 = Closed (hidden, no access)
+    Level 1 = View (full access - can view and control)
     """
     user_id = connection.user.id
     is_admin = connection.user.is_admin
@@ -477,9 +475,9 @@ def ws_get_panel_permissions(
             level = 0  # Fail secure - no access
             _LOGGER.warning("Invalid permission level for entity %s, defaulting to CLOSED", entity_id)
 
-        # Admin users always get level 3 for permission_manager panel
+        # Admin users always get level 1 (full access) for permission_manager panel
         if is_admin and panel_id == "ha_permission_manager":
-            level = 3
+            level = 1
 
         permissions[panel_id] = level
 
