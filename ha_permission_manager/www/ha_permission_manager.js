@@ -148,10 +148,7 @@ const I18N = {
     resourceTypes: {
       areas: "Areas",
       labels: "Labels",
-      automations: "Automations",
-      scripts: "Scripts",
       panels: "Panels",
-      custom: "Custom",
     },
     accessDenied: "Access Denied",
     accessDeniedMessage: "You don't have permission to view this panel.",
@@ -178,10 +175,7 @@ const I18N = {
     resourceTypes: {
       areas: "区域",
       labels: "标签",
-      automations: "自动化",
-      scripts: "脚本",
       panels: "面板",
-      custom: "自定义",
     },
     accessDenied: "访问被拒绝",
     accessDeniedMessage: "您没有权限查看此面板。",
@@ -208,10 +202,7 @@ const I18N = {
     resourceTypes: {
       areas: "區域",
       labels: "標籤",
-      automations: "自動化",
-      scripts: "腳本",
       panels: "面板",
-      custom: "自訂",
     },
     accessDenied: "存取被拒絕",
     accessDeniedMessage: "您沒有權限檢視此面板。",
@@ -237,18 +228,15 @@ const PERMISSION_LEVELS = [
 ];
 
 // Resource type configuration (keys match backend resource types with 's' suffix)
-const RESOURCE_TYPE_KEYS = ["areas", "labels", "automations", "scripts", "panels", "custom"];
+const RESOURCE_TYPE_KEYS = ["areas", "labels", "panels"];
 const RESOURCE_TYPE_ICONS = {
   areas: "mdi:floor-plan",
   labels: "mdi:tag",
-  automations: "mdi:robot",
-  scripts: "mdi:script-text",
   panels: "mdi:view-dashboard",
-  custom: "mdi:star",
 };
 
-// Map resource type to grouping key (handles 'custom' special case)
-const getResourceTypeKey = (type) => (type === "custom" ? "custom" : type + "s");
+// Map resource type to grouping key
+const getResourceTypeKey = (type) => type + "s";
 
 // Permission level constants
 const PERM_DENY = 0;

@@ -454,7 +454,7 @@ def ws_get_panel_permissions(
 
         # Validate resource_type
         resource_type = attrs.get("resource_type")
-        if resource_type not in ("panel", "area", "label", "automation", "script", "custom", "lovelace"):
+        if resource_type not in ("panel", "area", "label"):
             continue
         if resource_type != "panel":
             continue
@@ -545,7 +545,7 @@ def ws_get_all_permissions(
 
         resource_type = attrs.get("resource_type")
         # Validate resource_type
-        if resource_type not in ("panel", "area", "label", "automation", "script", "custom", "lovelace"):
+        if resource_type not in ("panel", "area", "label"):
             continue
         resource_id = attrs.get("resource_id", "")
 

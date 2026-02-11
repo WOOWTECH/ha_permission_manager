@@ -24,9 +24,6 @@ PERM_LABEL_TYPE = "label"
 PREFIX_AREA = "area_"
 PREFIX_LABEL = "label_"
 PREFIX_PANEL = "panel_"
-PREFIX_AUTOMATION = "automation_"
-PREFIX_SCRIPT = "script_"
-PREFIX_CUSTOM = "custom_"
 
 # Self-reference resource ID (for bootstrap protection)
 SELF_PANEL_ID = f"{PREFIX_PANEL}ha_permission_manager"

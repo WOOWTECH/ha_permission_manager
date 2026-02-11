@@ -14,6 +14,7 @@ from homeassistant.components.panel_custom import DOMAIN as PANEL_CUSTOM_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, Event
 from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import label_registry as lr
 
 from .const import (
@@ -37,6 +38,49 @@ from .websocket_api import async_register_websocket_api
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["select"]
+
+async def _async_cleanup_obsolete_permissions(hass: HomeAssistant) -> None:
+    """Remove orphaned script, automation, and custom permission entities.
+
+    These resource types were discovered but never enforced in prior versions.
+    This cleanup runs once on component load to remove any leftover entities.
+    """
+    entity_registry = er.async_get(hass)
+    entities_to_remove = []
+
+    # Resource types that are no longer supported (removed in v3.0.0)
+    obsolete_types = ("script", "automation", "custom")
+
+    # Find all permission entities with obsolete resource types
+    for entity_id, entity_entry in entity_registry.entities.items():
+        if not entity_id.startswith("select.permission_manager_"):
+            continue
+
+        # Check if unique_id contains obsolete resource type prefix
+        # Format: perm_{user_id}_{resource_type}_{resource_id}
+        unique_id = entity_entry.unique_id or ""
+        if not unique_id.startswith("perm_"):
+            continue
+
+        # Extract resource_type from unique_id
+        # Example: perm_abc123_script_my_script -> resource_type is "script"
+        parts = unique_id.split("_", 3)  # ["perm", user_id, resource_type, resource_id]
+        if len(parts) >= 3:
+            resource_type = parts[2]
+            if resource_type in obsolete_types:
+                entities_to_remove.append(entity_id)
+
+    # Remove obsolete entities
+    if entities_to_remove:
+        _LOGGER.info(
+            "Cleaning up %d obsolete permission entities (scripts/automations/custom)",
+            len(entities_to_remove)
+        )
+        for entity_id in entities_to_remove:
+            entity_registry.async_remove(entity_id)
+            _LOGGER.debug("Removed obsolete permission entity: %s", entity_id)
+    else:
+        _LOGGER.debug("No obsolete permission entities found")
 
 
 def _get_panel_title(hass: HomeAssistant) -> str:
@@ -88,6 +132,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["entry"] = entry
     hass.data[DOMAIN]["entities"] = {}
     hass.data[DOMAIN]["unsubscribe"] = []
+
+    # Cleanup obsolete script/automation permission entities (v3.0.0 migration)
+    await _async_cleanup_obsolete_permissions(hass)
 
     # Register WebSocket API
     async_register_websocket_api(hass)
