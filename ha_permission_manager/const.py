@@ -3,19 +3,16 @@ import re
 
 DOMAIN = "ha_permission_manager"
 
-PERMISSION_OPTIONS = ["0", "1", "2", "3"]
+PERMISSION_OPTIONS = ["0", "1"]
 PERMISSION_LABELS = {
     "0": "Closed",
     "1": "View",
-    "2": "Limited",
-    "3": "Edit",
 }
 
 # Permission levels (numeric values for comparison)
+# Simplified from 4 levels to 2 levels (v3.0.0)
 PERM_CLOSED = 0
 PERM_VIEW = 1
-PERM_LIMITED = 2
-PERM_EDIT = 3
 
 # Permission Manager entity patterns (from child components)
 # Entity ID format: select.permission_manager_{user}_{resource_type}_{resource}
