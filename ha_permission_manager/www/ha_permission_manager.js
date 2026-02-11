@@ -144,8 +144,6 @@ const I18N = {
     permissionLevels: {
       "0": "Closed",
       "1": "View",
-      "2": "Limited",
-      "3": "Edit",
     },
     resourceTypes: {
       areas: "Areas",
@@ -176,8 +174,6 @@ const I18N = {
     permissionLevels: {
       "0": "关闭",
       "1": "查看",
-      "2": "有限",
-      "3": "编辑",
     },
     resourceTypes: {
       areas: "区域",
@@ -208,8 +204,6 @@ const I18N = {
     permissionLevels: {
       "0": "關閉",
       "1": "檢視",
-      "2": "有限",
-      "3": "編輯",
     },
     resourceTypes: {
       areas: "區域",
@@ -238,10 +232,8 @@ const getI18n = (lang) => {
 
 // Permission levels configuration (matches backend const.py PERMISSION_LABELS)
 const PERMISSION_LEVELS = [
-  { value: "0", color: "#db4437" },
-  { value: "1", color: "#ff9800" },
-  { value: "2", color: "#039be5" },
-  { value: "3", color: "#43a047" },
+  { value: "0", color: "#db4437" },  // Red - Closed
+  { value: "1", color: "#43a047" },  // Green - View (full access)
 ];
 
 // Resource type configuration (keys match backend resource types with 's' suffix)
@@ -261,8 +253,6 @@ const getResourceTypeKey = (type) => (type === "custom" ? "custom" : type + "s")
 // Permission level constants
 const PERM_DENY = 0;
 const PERM_VIEW = 1;
-const PERM_LIMITED = 2;
-const PERM_EDIT = 3;
 
 /**
  * Fetch panel permissions for current user via WebSocket
