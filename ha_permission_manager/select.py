@@ -296,7 +296,7 @@ async def async_update_user_info(
     """Update user info (name and/or admin status) for a user and all their permission entities.
 
     When a user's admin status changes in HA:
-    - If promoted to admin: all permissions become protected (locked at "3")
+    - If promoted to admin: all permissions become protected (locked at "1" View)
     - If demoted from admin: permissions become editable and reset to "0" (Closed)
 
     When a user's name changes:
@@ -377,14 +377,14 @@ async def async_update_user_info(
                 entity._is_protected = new_is_protected
 
                 if new_is_protected:
-                    # Promoted to admin: lock at "3" (Edit)
-                    entity._attr_current_option = "3"
+                    # Promoted to admin: lock at "1" (View)
+                    entity._attr_current_option = "1"
                 else:
                     # Demoted from admin: set default permissions
                     # Only profile panel needs access (for logout), all others closed
                     resource_id = entity._resource.id
                     if resource_id == "panel_profile":
-                        entity._attr_current_option = "3"  # Edit access for profile
+                        entity._attr_current_option = "1"  # View access for profile
                     else:
                         entity._attr_current_option = "0"  # Closed
 
@@ -433,7 +433,7 @@ class PermissionSelectEntity(SelectEntity, RestoreEntity):
         self._user = user
         self._resource = resource
         self._is_protected = is_protected
-        self._attr_current_option = "3" if is_protected else "0"
+        self._attr_current_option = "1" if is_protected else "0"
 
         # Build IDs
         self._attr_unique_id = build_unique_id(
@@ -480,14 +480,22 @@ class PermissionSelectEntity(SelectEntity, RestoreEntity):
         last_state = await self.async_get_last_state()
         if last_state and last_state.state in PERMISSION_OPTIONS:
             if self._is_protected:
-                # Protected entities always stay at "3"
-                self._attr_current_option = "3"
+                # Protected entities always stay at "1" (View)
+                self._attr_current_option = "1"
             else:
                 self._attr_current_option = last_state.state
             _LOGGER.debug(
                 "Restored %s to %s",
                 self.entity_id,
                 self._attr_current_option
+            )
+        elif last_state and last_state.state in ["2", "3"]:
+            # Legacy value migration: map 2,3 -> 1 (View)
+            self._attr_current_option = "1"
+            _LOGGER.debug(
+                "Migrated legacy state %s -> 1 for %s",
+                last_state.state,
+                self.entity_id
             )
 
         # Critical: Write state to ensure attributes are available in state machine
