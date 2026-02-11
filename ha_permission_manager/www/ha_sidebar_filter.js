@@ -11,8 +11,14 @@
 
   // Sidebar title translations
   const SIDEBAR_TITLES = {
-    en: "Permission Manager",
-    zh: "權限管理"
+    "ha_permission_manager": {
+      en: "Permission Manager",
+      zh: "權限管理器"
+    },
+    "ha-control-panel": {
+      en: "Control Panel",
+      zh: "控制面板"
+    }
   };
 
   // State
@@ -439,7 +445,7 @@
     }
 
     const lang = hass.language || "en";
-    const title = lang.startsWith("zh") ? SIDEBAR_TITLES.zh : SIDEBAR_TITLES.en;
+    const isZh = lang.startsWith("zh");
 
     // Traverse Shadow DOM to find sidebar items
     const haMain = document.querySelector("home-assistant");
@@ -458,21 +464,57 @@
     }
     if (!haSidebar?.shadowRoot) return false;
 
-    // Find the sidebar navigation items
-    const paperListbox = haSidebar.shadowRoot.querySelector("paper-listbox");
-    if (!paperListbox) return false;
+    // Find sidebar navigation items - try multiple selectors for HA version compatibility
+    let items = [];
 
-    const items = paperListbox.querySelectorAll("a");
+    // Modern HA (2024+) uses different structure
+    const sidebarRoot = haSidebar.shadowRoot;
+
+    // Try paper-listbox first (older HA)
+    const paperListbox = sidebarRoot.querySelector("paper-listbox");
+    if (paperListbox) {
+      items = paperListbox.querySelectorAll("a");
+    }
+
+    // Try ha-md-list (newer HA)
+    if (items.length === 0) {
+      const mdList = sidebarRoot.querySelector("ha-md-list");
+      if (mdList) {
+        items = mdList.querySelectorAll("a");
+      }
+    }
+
+    // Fallback: query all anchor tags in sidebar
+    if (items.length === 0) {
+      items = sidebarRoot.querySelectorAll("a[href]");
+    }
+
+    if (items.length === 0) return false;
+
     let updated = false;
+
+    // Panels to translate
+    const panelsToTranslate = ["ha_permission_manager", "ha-control-panel"];
 
     items.forEach(item => {
       const href = item.getAttribute("href");
-      if (href === "/ha_permission_manager") {
-        const textSpan = item.querySelector(".item-text");
-        if (textSpan && textSpan.textContent !== title) {
-          textSpan.textContent = title;
+      if (!href) return;
+
+      // Extract panel ID from href (e.g., "/ha_permission_manager" -> "ha_permission_manager")
+      const panelId = href.replace(/^\//, "");
+
+      if (panelsToTranslate.includes(panelId) && SIDEBAR_TITLES[panelId]) {
+        const title = isZh ? SIDEBAR_TITLES[panelId].zh : SIDEBAR_TITLES[panelId].en;
+
+        // Try multiple selectors for text element (HA version compatibility)
+        let textEl = item.querySelector(".item-text");
+        if (!textEl) textEl = item.querySelector("[slot='headline']");
+        if (!textEl) textEl = item.querySelector("span");
+
+        if (textEl && textEl.textContent !== title) {
+          textEl.textContent = title;
           updated = true;
-        } else if (textSpan && textSpan.textContent === title) {
+        } else if (textEl && textEl.textContent === title) {
           updated = true; // Already correct
         }
       }
@@ -491,24 +533,30 @@
       return false;
     }
 
-    const panel = haMain.hass.panels.ha_permission_manager;
-    if (!panel) {
-      return false;
-    }
+    const isZh = lang && lang.startsWith("zh");
+    const panelsToUpdate = ["ha_permission_manager", "ha-control-panel"];
+    let anyUpdated = false;
 
-    const title = (lang && lang.startsWith("zh")) ? SIDEBAR_TITLES.zh : SIDEBAR_TITLES.en;
-
-    // Only update if title actually changed
-    if (panel.title === title) {
-      return true;
-    }
-
-    // Update the panel data model - this triggers HA's reactive update
+    // Create a copy of panels to modify
     const updatedPanels = { ...haMain.hass.panels };
-    updatedPanels.ha_permission_manager = { ...panel, title: title };
 
-    // Trigger reactive update by assigning new hass object
-    haMain.hass = { ...haMain.hass, panels: updatedPanels };
+    for (const panelId of panelsToUpdate) {
+      const panel = updatedPanels[panelId];
+      if (!panel || !SIDEBAR_TITLES[panelId]) continue;
+
+      const title = isZh ? SIDEBAR_TITLES[panelId].zh : SIDEBAR_TITLES[panelId].en;
+
+      // Only update if title actually changed
+      if (panel.title !== title) {
+        updatedPanels[panelId] = { ...panel, title: title };
+        anyUpdated = true;
+      }
+    }
+
+    // Trigger reactive update by assigning new hass object if any panel was updated
+    if (anyUpdated) {
+      haMain.hass = { ...haMain.hass, panels: updatedPanels };
+    }
 
     return true;
   }
