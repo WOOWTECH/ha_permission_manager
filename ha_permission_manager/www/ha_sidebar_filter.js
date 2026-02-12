@@ -658,11 +658,31 @@
       lastLanguage = hass.language || "en";
     }
 
-    await applySidebarFilter();
-
-    // Initialize permission hash for change detection polling
+    // Fetch permissions BEFORE filtering to enable restricted-panel redirect
     const { permissions: initPerms } = await fetchPermissions();
     lastPermissionHash = JSON.stringify(initPerms);
+
+    // Redirect away from restricted panel BEFORE filtering hass.panels
+    // This prevents partial-panel-resolver from getting stuck with _initialLoadDone=false
+    if (!isAdmin) {
+      const path = window.location.pathname;
+      const match = path.match(/^\/([^\/]+)/);
+      if (match) {
+        const currentPanel = match[1];
+        const skipPanels = ["local", "api", "auth", "static", "frontend_latest",
+                            "frontend_es5", "_my_redirect", "profile"];
+        if (!skipPanels.includes(currentPanel)) {
+          const level = initPerms[currentPanel];
+          if (level === undefined || level === PERM_DENY) {
+            const defaultPanel = hass?.defaultPanel || "lovelace";
+            window.location.replace("/" + defaultPanel);
+            return; // Stop init — page will reload on allowed panel
+          }
+        }
+      }
+    }
+
+    await applySidebarFilter();
 
     watchNavigation();
     await subscribeToChanges();

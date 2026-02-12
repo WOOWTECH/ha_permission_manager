@@ -101,17 +101,9 @@
       return false;
     }
 
-    // If we have lovelace permission > 0, check areas/labels
+    // If we have lovelace permission > 0, show content
+    // Panel permission alone controls dashboard visibility
     if (lovelaceLevel !== null && lovelaceLevel > PERM_DENY) {
-      // Has lovelace access, now check if has any area or label access
-      const hasAreaAccess = Object.values(permissions.areas || {}).some(v => v > PERM_DENY);
-      const hasLabelAccess = Object.values(permissions.labels || {}).some(v => v > PERM_DENY);
-
-      // If no area and no label access, hide content
-      if (!hasAreaAccess && !hasLabelAccess) {
-        return false;
-      }
-
       return true;
     }
 
