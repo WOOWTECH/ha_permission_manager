@@ -12,10 +12,11 @@ from homeassistant.components.frontend import (
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.components.panel_custom import DOMAIN as PANEL_CUSTOM_DOMAIN
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, Event
+from homeassistant.core import HomeAssistant, Event, callback
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import label_registry as lr
+from homeassistant.helpers.storage import Store
 
 from .const import (
     DOMAIN,
@@ -24,9 +25,12 @@ from .const import (
     PANEL_TITLE_ZH,
     PANEL_URL,
     PANEL_VERSION,
+    PERM_CLOSED,
     PREFIX_AREA,
     PREFIX_LABEL,
     PREFIX_PANEL,
+    STORAGE_KEY,
+    STORAGE_VERSION,
     # Control Panel constants
     CONTROL_PANEL_URL,
     CONTROL_PANEL_TITLE,
@@ -132,6 +136,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN]["entry"] = entry
     hass.data[DOMAIN]["entities"] = {}
     hass.data[DOMAIN]["unsubscribe"] = []
+
+    # Initialize Store for persistent permission storage
+    store = Store[dict[str, Any]](hass, STORAGE_VERSION, STORAGE_KEY)
+    hass.data[DOMAIN]["store"] = store
+
+    # Load permissions from persistent storage
+    stored_data = await store.async_load()
+    if stored_data is not None:
+        hass.data[DOMAIN]["permissions"] = stored_data.get("permissions", {})
+        _LOGGER.debug(
+            "Loaded %d user permission sets from storage",
+            len(hass.data[DOMAIN]["permissions"])
+        )
+    else:
+        hass.data[DOMAIN]["permissions"] = {}
+        _LOGGER.debug("No existing permissions found, starting fresh")
 
     # Cleanup obsolete script/automation permission entities (v3.0.0 migration)
     await _async_cleanup_obsolete_permissions(hass)
@@ -493,3 +513,153 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     add_extra_js_url(hass, f"/local/ha_sidebar_filter.js?v={PANEL_VERSION}")
 
     _LOGGER.debug("Frontend panels registered")
+
+
+# =============================================================================
+# Permission CRUD Functions (Store-based)
+# =============================================================================
+
+
+async def async_get_permission(
+    hass: HomeAssistant, user_id: str, resource_id: str
+) -> int:
+    """Get permission level for a user and resource.
+
+    Args:
+        hass: Home Assistant instance.
+        user_id: The user ID to check.
+        resource_id: The resource ID (e.g., "area_living_room", "panel_config").
+
+    Returns:
+        Permission level (0=Closed, 1=View). Defaults to PERM_CLOSED if not set.
+    """
+    domain_data = hass.data.get(DOMAIN, {})
+    permissions = domain_data.get("permissions", {})
+    user_perms = permissions.get(user_id, {})
+    return user_perms.get(resource_id, PERM_CLOSED)
+
+
+async def async_set_permission(
+    hass: HomeAssistant, user_id: str, resource_id: str, level: int
+) -> None:
+    """Set permission level for a user and resource.
+
+    Args:
+        hass: Home Assistant instance.
+        user_id: The user ID to set permission for.
+        resource_id: The resource ID (e.g., "area_living_room", "panel_config").
+        level: Permission level (0=Closed, 1=View).
+    """
+    domain_data = hass.data.get(DOMAIN, {})
+    permissions = domain_data.setdefault("permissions", {})
+
+    if user_id not in permissions:
+        permissions[user_id] = {}
+
+    permissions[user_id][resource_id] = level
+    _LOGGER.debug(
+        "Set permission: user=%s, resource=%s, level=%d",
+        user_id, resource_id, level
+    )
+
+    # Schedule async save
+    await async_save_permissions(hass)
+
+
+@callback
+def async_get_all_permissions(hass: HomeAssistant) -> dict[str, dict[str, int]]:
+    """Get all permissions from storage.
+
+    Args:
+        hass: Home Assistant instance.
+
+    Returns:
+        Dictionary mapping user_id -> {resource_id: permission_level}.
+    """
+    domain_data = hass.data.get(DOMAIN, {})
+    return domain_data.get("permissions", {})
+
+
+@callback
+def async_get_user_permissions(hass: HomeAssistant, user_id: str) -> dict[str, int]:
+    """Get all permissions for a specific user.
+
+    Args:
+        hass: Home Assistant instance.
+        user_id: The user ID to get permissions for.
+
+    Returns:
+        Dictionary mapping resource_id -> permission_level.
+    """
+    domain_data = hass.data.get(DOMAIN, {})
+    permissions = domain_data.get("permissions", {})
+    return permissions.get(user_id, {})
+
+
+async def async_delete_user_permissions(hass: HomeAssistant, user_id: str) -> None:
+    """Delete all permissions for a user.
+
+    Called when a user is removed from Home Assistant.
+
+    Args:
+        hass: Home Assistant instance.
+        user_id: The user ID to delete permissions for.
+    """
+    domain_data = hass.data.get(DOMAIN, {})
+    permissions = domain_data.get("permissions", {})
+
+    if user_id in permissions:
+        del permissions[user_id]
+        _LOGGER.info("Deleted all permissions for user: %s", user_id)
+        await async_save_permissions(hass)
+
+
+async def async_delete_resource_permissions(
+    hass: HomeAssistant, resource_id: str
+) -> None:
+    """Delete permissions for a resource from all users.
+
+    Called when a resource (area, label, panel) is removed.
+
+    Args:
+        hass: Home Assistant instance.
+        resource_id: The resource ID to delete permissions for.
+    """
+    domain_data = hass.data.get(DOMAIN, {})
+    permissions = domain_data.get("permissions", {})
+
+    modified = False
+    for user_id in permissions:
+        if resource_id in permissions[user_id]:
+            del permissions[user_id][resource_id]
+            modified = True
+
+    if modified:
+        _LOGGER.info("Deleted permissions for resource: %s", resource_id)
+        await async_save_permissions(hass)
+
+
+async def async_save_permissions(hass: HomeAssistant) -> None:
+    """Save permissions to persistent storage.
+
+    This uses Store.async_delay_save to batch writes and avoid
+    excessive disk I/O when multiple permissions are changed quickly.
+
+    Args:
+        hass: Home Assistant instance.
+    """
+    domain_data = hass.data.get(DOMAIN, {})
+    store: Store | None = domain_data.get("store")
+    permissions = domain_data.get("permissions", {})
+
+    if store is None:
+        _LOGGER.warning("Store not initialized, cannot save permissions")
+        return
+
+    def _data_to_save() -> dict[str, Any]:
+        """Return the data to save."""
+        return {"permissions": permissions}
+
+    # Use async_delay_save with 1 second delay to batch rapid changes
+    store.async_delay_save(_data_to_save, 1.0)
+    _LOGGER.debug("Scheduled permission save")
