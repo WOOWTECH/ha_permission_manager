@@ -33,9 +33,6 @@ PERM_VIEW = 1
 PERM_AREA_TYPE = "area"
 PERM_LABEL_TYPE = "label"
 
-# Permission entity prefix pattern
-PERM_PREFIX = "select.permission_manager_"
-
 
 def async_register_websocket_api(hass: HomeAssistant) -> None:
     """Register WebSocket API handlers."""
@@ -50,66 +47,98 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
 
 
 # =============================================================================
+# Store-based Permission Helpers
+# =============================================================================
+
+
+@callback
+def _get_user_permissions(hass: HomeAssistant, user_id: str) -> dict[str, int]:
+    """Get all permissions for a user from Store.
+
+    Args:
+        hass: Home Assistant instance.
+        user_id: The user ID to get permissions for.
+
+    Returns:
+        Dictionary mapping resource_id -> permission_level.
+    """
+    domain_data = hass.data.get(DOMAIN, {})
+    permissions = domain_data.get("permissions", {})
+    return permissions.get(user_id, {})
+
+
+# =============================================================================
 # Area Control WebSocket Handlers
 # =============================================================================
 
-async def get_user_permitted_areas(hass: HomeAssistant, user_id: str) -> list[dict]:
-    """Get areas the user has permission to access."""
+
+@callback
+def get_user_permitted_areas(hass: HomeAssistant, user_id: str) -> list[dict]:
+    """Get areas the user has permission to access.
+
+    Uses Store-based permission data instead of entity state queries.
+
+    Args:
+        hass: Home Assistant instance.
+        user_id: The user ID to check permissions for.
+
+    Returns:
+        List of permitted area dicts with id, name, and permission_level.
+    """
     permitted = []
+    area_reg = ar.async_get(hass)
 
-    # Get all states for select entities
-    states = hass.states.async_all("select")
+    # Get all permissions for this user from Store
+    user_perms = _get_user_permissions(hass, user_id)
 
-    _LOGGER.debug("Checking permissions for user_id: %s", user_id)
-    _LOGGER.debug("Looking for entities with prefix: %s", PERM_PREFIX)
+    _LOGGER.debug("Checking area permissions for user_id: %s", user_id)
+    _LOGGER.debug("User has %d total permissions", len(user_perms))
 
-    matching_count = 0
-    for state in states:
-        entity_id = state.entity_id
-        # Pattern: select.perm_{user_slug}_{resource_type}_{resource_slug}
-        if not entity_id.startswith(PERM_PREFIX):
-            continue
-
-        matching_count += 1
-        attrs = state.attributes
-        attr_user_id = attrs.get("user_id")
-        attr_resource_type = attrs.get("resource_type")
-
-        _LOGGER.debug(
-            "Found entity %s: user_id=%s (match=%s), resource_type=%s (match=%s), state=%s",
-            entity_id, attr_user_id, attr_user_id == user_id,
-            attr_resource_type, attr_resource_type == PERM_AREA_TYPE, state.state
-        )
-
-        if attr_user_id != user_id:
-            continue
-        if attr_resource_type != PERM_AREA_TYPE:
+    for resource_id, perm_level in user_perms.items():
+        # Only process area resources
+        if not resource_id.startswith(PREFIX_AREA):
             continue
 
         # Check permission level >= 1 (View)
-        try:
-            perm_level = int(state.state)
-        except ValueError:
+        if perm_level < PERM_VIEW:
             continue
 
-        if perm_level >= PERM_VIEW:
-            # Extract area_id from resource_id (remove "area_" prefix)
-            resource_id = attrs.get("resource_id", "")
-            area_id = resource_id[5:] if resource_id.startswith("area_") else resource_id
+        # Extract area_id from resource_id (remove "area_" prefix)
+        area_id = resource_id[len(PREFIX_AREA):]
 
-            permitted.append({
-                "id": area_id,
-                "name": attrs.get("resource_name", area_id),
-                "permission_level": perm_level,
-            })
-            _LOGGER.info("User %s has permission %d for area %s", user_id, perm_level, area_id)
+        # Get area info from registry for the name
+        area = area_reg.async_get_area(area_id)
+        area_name = area.name if area else area_id
 
-    _LOGGER.debug("Total entities with prefix: %d, permitted areas: %d", matching_count, len(permitted))
+        permitted.append({
+            "id": area_id,
+            "name": area_name,
+            "permission_level": perm_level,
+        })
+        _LOGGER.debug(
+            "User %s has permission %d for area %s",
+            user_id, perm_level, area_id
+        )
+
+    _LOGGER.debug(
+        "User %s has %d permitted areas",
+        user_id, len(permitted)
+    )
     return permitted
 
 
-async def get_entities_for_area(hass: HomeAssistant, area_id: str) -> dict[str, list[str]]:
-    """Get entities grouped by domain for an area."""
+async def get_entities_for_area(
+    hass: HomeAssistant, area_id: str
+) -> dict[str, list[str]]:
+    """Get entities grouped by domain for an area.
+
+    Args:
+        hass: Home Assistant instance.
+        area_id: The area ID to get entities for.
+
+    Returns:
+        Dictionary mapping domain -> list of entity_ids.
+    """
     entity_reg = er.async_get(hass)
     device_reg = dr.async_get(hass)
 
@@ -142,7 +171,11 @@ async def websocket_get_permitted_areas(
     connection: websocket_api.ActiveConnection,
     msg: dict,
 ) -> None:
-    """Handle get permitted areas command."""
+    """Handle get permitted areas command.
+
+    Returns areas the user has permission to access, with entity counts.
+    Admin users get all areas with full access.
+    """
     user = connection.user
 
     if user is None:
@@ -166,7 +199,10 @@ async def websocket_get_permitted_areas(
         if entity_area:
             entity_counts[entity_area] = entity_counts.get(entity_area, 0) + 1
 
-    _LOGGER.info("get_permitted_areas called by user: %s (id=%s, is_admin=%s)", user.name, user.id, user.is_admin)
+    _LOGGER.info(
+        "get_permitted_areas called by user: %s (id=%s, is_admin=%s)",
+        user.name, user.id, user.is_admin
+    )
 
     # Admin users see all areas
     if user.is_admin:
@@ -184,9 +220,12 @@ async def websocket_get_permitted_areas(
         connection.send_result(msg["id"], {"areas": areas})
         return
 
-    # Non-admin: check permissions
-    permitted = await get_user_permitted_areas(hass, user.id)
-    _LOGGER.info("Non-admin user %s (id=%s) has %d permitted areas", user.name, user.id, len(permitted))
+    # Non-admin: check permissions from Store
+    permitted = get_user_permitted_areas(hass, user.id)
+    _LOGGER.info(
+        "Non-admin user %s (id=%s) has %d permitted areas",
+        user.name, user.id, len(permitted)
+    )
 
     # Enrich with area details and entity count
     areas = []
@@ -214,7 +253,11 @@ async def websocket_get_area_entities(
     connection: websocket_api.ActiveConnection,
     msg: dict,
 ) -> None:
-    """Handle get area entities command."""
+    """Handle get area entities command.
+
+    Returns entities grouped by domain for a specific area.
+    Validates user has permission for the area.
+    """
     user = connection.user
     area_id = msg["area_id"]
 
@@ -229,7 +272,7 @@ async def websocket_get_area_entities(
 
     # Verify permission (admin or has area permission)
     if not user.is_admin:
-        permitted = await get_user_permitted_areas(hass, user.id)
+        permitted = get_user_permitted_areas(hass, user.id)
         area_ids = [p["id"] for p in permitted]
         if area_id not in area_ids:
             connection.send_error(msg["id"], "forbidden", "No permission for this area")
@@ -244,48 +287,69 @@ async def websocket_get_area_entities(
 # Label Control WebSocket Handlers
 # =============================================================================
 
-async def get_user_permitted_labels(hass: HomeAssistant, user_id: str) -> list[dict]:
-    """Get labels the user has permission to access."""
+
+@callback
+def get_user_permitted_labels(hass: HomeAssistant, user_id: str) -> list[dict]:
+    """Get labels the user has permission to access.
+
+    Uses Store-based permission data instead of entity state queries.
+
+    Args:
+        hass: Home Assistant instance.
+        user_id: The user ID to check permissions for.
+
+    Returns:
+        List of permitted label dicts with id, name, and permission_level.
+    """
     permitted = []
+    label_reg = lr.async_get(hass)
 
-    # Get all states for select entities
-    states = hass.states.async_all("select")
+    # Get all permissions for this user from Store
+    user_perms = _get_user_permissions(hass, user_id)
 
-    for state in states:
-        entity_id = state.entity_id
-        # Pattern: select.perm_{user_slug}_label_{label_slug}
-        if not entity_id.startswith(PERM_PREFIX):
-            continue
+    _LOGGER.debug("Checking label permissions for user_id: %s", user_id)
 
-        attrs = state.attributes
-        if attrs.get("user_id") != user_id:
-            continue
-        if attrs.get("resource_type") != PERM_LABEL_TYPE:
+    for resource_id, perm_level in user_perms.items():
+        # Only process label resources
+        if not resource_id.startswith(PREFIX_LABEL):
             continue
 
         # Check permission level >= 1 (View)
-        try:
-            perm_level = int(state.state)
-        except ValueError:
-            _LOGGER.debug("Invalid permission level for %s: %s", entity_id, state.state)
+        if perm_level < PERM_VIEW:
             continue
 
-        if perm_level >= PERM_VIEW:
-            # Extract label_id from resource_id (remove "label_" prefix)
-            resource_id = attrs.get("resource_id", "")
-            label_id = resource_id[6:] if resource_id.startswith("label_") else resource_id
+        # Extract label_id from resource_id (remove "label_" prefix)
+        label_id = resource_id[len(PREFIX_LABEL):]
 
-            permitted.append({
-                "id": label_id,
-                "name": attrs.get("resource_name", label_id),
-                "permission_level": perm_level,
-            })
+        # Get label info from registry for the name
+        label = label_reg.async_get_label(label_id)
+        label_name = label.name if label else label_id
 
+        permitted.append({
+            "id": label_id,
+            "name": label_name,
+            "permission_level": perm_level,
+        })
+
+    _LOGGER.debug(
+        "User %s has %d permitted labels",
+        user_id, len(permitted)
+    )
     return permitted
 
 
-async def get_entities_for_label(hass: HomeAssistant, label_id: str) -> dict[str, list[str]]:
-    """Get entities grouped by domain for a label."""
+async def get_entities_for_label(
+    hass: HomeAssistant, label_id: str
+) -> dict[str, list[str]]:
+    """Get entities grouped by domain for a label.
+
+    Args:
+        hass: Home Assistant instance.
+        label_id: The label ID to get entities for.
+
+    Returns:
+        Dictionary mapping domain -> list of entity_ids.
+    """
     entity_reg = er.async_get(hass)
 
     entities_by_domain: dict[str, list[str]] = {}
@@ -310,7 +374,11 @@ async def websocket_get_permitted_labels(
     connection: websocket_api.ActiveConnection,
     msg: dict,
 ) -> None:
-    """Handle get permitted labels command."""
+    """Handle get permitted labels command.
+
+    Returns labels the user has permission to access, with entity counts.
+    Admin users get all labels with full access.
+    """
     user = connection.user
 
     if user is None:
@@ -344,8 +412,8 @@ async def websocket_get_permitted_labels(
         connection.send_result(msg["id"], {"labels": labels})
         return
 
-    # Non-admin: check permissions
-    permitted = await get_user_permitted_labels(hass, user.id)
+    # Non-admin: check permissions from Store
+    permitted = get_user_permitted_labels(hass, user.id)
 
     # Enrich with label details and entity count
     labels = []
@@ -374,7 +442,11 @@ async def websocket_get_label_entities(
     connection: websocket_api.ActiveConnection,
     msg: dict,
 ) -> None:
-    """Handle get label entities command."""
+    """Handle get label entities command.
+
+    Returns entities grouped by domain for a specific label.
+    Validates user has permission for the label.
+    """
     user = connection.user
     label_id = msg["label_id"]
 
@@ -389,7 +461,7 @@ async def websocket_get_label_entities(
 
     # Verify permission (admin or has label permission)
     if not user.is_admin:
-        permitted = await get_user_permitted_labels(hass, user.id)
+        permitted = get_user_permitted_labels(hass, user.id)
         label_ids = [p["id"] for p in permitted]
         if label_id not in label_ids:
             connection.send_error(msg["id"], "forbidden", "No permission for this label")
@@ -404,6 +476,7 @@ async def websocket_get_label_entities(
 # Permission Manager WebSocket Handlers
 # =============================================================================
 
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "permission_manager/get_panel_permissions",
@@ -417,6 +490,8 @@ def ws_get_panel_permissions(
 ) -> None:
     """Return panel permissions for the current user.
 
+    Uses Store-based permission data instead of entity state queries.
+
     Returns dict of panel_id -> permission_level (0 or 1)
     Level 0 = Closed (hidden, no access)
     Level 1 = View (full access - can view and control)
@@ -426,67 +501,31 @@ def ws_get_panel_permissions(
 
     permissions: dict[str, int] = {}
 
-    # Find all panel permission entities for this user
-    # Entity IDs can be:
-    # - select.perm_* (suggested object id format)
-    # - select.permission_manager_* (has_entity_name format)
-    all_select_entities = hass.states.async_all("select")
-    perm_entities_found = 0
-    matched_user = 0
+    # Get all permissions for this user from Store
+    user_perms = _get_user_permissions(hass, user_id)
+
     matched_panel = 0
 
-    for entity in all_select_entities:
-        entity_id = entity.entity_id
-        if not (entity_id.startswith("select.perm_") or entity_id.startswith("select.permission_manager_")):
-            continue
-
-        perm_entities_found += 1
-        attrs = entity.attributes
-
-        # Validate user_id attribute
-        entity_user_id = attrs.get("user_id")
-        if not isinstance(entity_user_id, str) or not entity_user_id:
-            continue
-        if entity_user_id != user_id:
-            continue
-
-        matched_user += 1
-
-        # Validate resource_type
-        resource_type = attrs.get("resource_type")
-        if resource_type not in ("panel", "area", "label"):
-            continue
-        if resource_type != "panel":
+    for resource_id, perm_level in user_perms.items():
+        # Only process panel resources
+        if not resource_id.startswith(PREFIX_PANEL):
             continue
 
         matched_panel += 1
 
         # Extract panel_id from resource_id (strip prefix)
-        resource_id = attrs.get("resource_id", "")
-        if resource_id.startswith(PREFIX_PANEL):
-            panel_id = resource_id[len(PREFIX_PANEL):]
-        else:
-            panel_id = resource_id
-
-        # Get permission level - fail secure (default to no access)
-        try:
-            level = int(entity.state)
-        except (ValueError, TypeError):
-            level = 0  # Fail secure - no access
-            _LOGGER.warning("Invalid permission level for entity %s, defaulting to CLOSED", entity_id)
+        panel_id = resource_id[len(PREFIX_PANEL):]
 
         # Admin users always get level 1 (full access) for permission_manager panel
         if is_admin and panel_id == "ha_permission_manager":
-            level = 1
+            perm_level = 1
 
-        permissions[panel_id] = level
+        permissions[panel_id] = perm_level
 
     _LOGGER.debug(
-        "Panel permissions for user %s (is_admin=%s): found=%d, matched_user=%d, matched_panel=%d, permissions=%s",
+        "Panel permissions for user %s (is_admin=%s): matched_panel=%d, permissions=%s",
         user_id,
         is_admin,
-        perm_entities_found,
-        matched_user,
         matched_panel,
         permissions,
     )
@@ -512,6 +551,8 @@ def ws_get_all_permissions(
 ) -> None:
     """Return all permissions for the current user.
 
+    Uses Store-based permission data instead of entity state queries.
+
     Returns dict with:
     - panels: dict of panel_id -> permission_level
     - areas: dict of area_id -> permission_level
@@ -525,57 +566,21 @@ def ws_get_all_permissions(
     areas: dict[str, int] = {}
     labels: dict[str, int] = {}
 
-    # Find all permission entities for this user
-    # Entity IDs can be:
-    # - select.perm_* (suggested object id format)
-    # - select.permission_manager_* (has_entity_name format)
-    for entity in hass.states.async_all("select"):
-        entity_id = entity.entity_id
-        if not (entity_id.startswith("select.perm_") or entity_id.startswith("select.permission_manager_")):
-            continue
+    # Get all permissions for this user from Store
+    user_perms = _get_user_permissions(hass, user_id)
 
-        attrs = entity.attributes
+    for resource_id, perm_level in user_perms.items():
+        if resource_id.startswith(PREFIX_PANEL):
+            panel_id = resource_id[len(PREFIX_PANEL):]
+            panels[panel_id] = perm_level
 
-        # Validate user_id attribute
-        entity_user_id = attrs.get("user_id")
-        if not isinstance(entity_user_id, str) or not entity_user_id:
-            continue
-        if entity_user_id != user_id:
-            continue
+        elif resource_id.startswith(PREFIX_AREA):
+            area_id = resource_id[len(PREFIX_AREA):]
+            areas[area_id] = perm_level
 
-        resource_type = attrs.get("resource_type")
-        # Validate resource_type
-        if resource_type not in ("panel", "area", "label"):
-            continue
-        resource_id = attrs.get("resource_id", "")
-
-        # Get permission level - fail secure (default to no access)
-        try:
-            level = int(entity.state)
-        except (ValueError, TypeError):
-            level = 0  # Fail secure - no access
-            _LOGGER.warning("Invalid permission level for entity %s, defaulting to CLOSED", entity_id)
-
-        if resource_type == "panel":
-            if resource_id.startswith(PREFIX_PANEL):
-                panel_id = resource_id[len(PREFIX_PANEL):]
-            else:
-                panel_id = resource_id
-            panels[panel_id] = level
-
-        elif resource_type == "area":
-            if resource_id.startswith(PREFIX_AREA):
-                area_id = resource_id[len(PREFIX_AREA):]
-            else:
-                area_id = resource_id
-            areas[area_id] = level
-
-        elif resource_type == "label":
-            if resource_id.startswith(PREFIX_LABEL):
-                label_id = resource_id[len(PREFIX_LABEL):]
-            else:
-                label_id = resource_id
-            labels[label_id] = level
+        elif resource_id.startswith(PREFIX_LABEL):
+            label_id = resource_id[len(PREFIX_LABEL):]
+            labels[label_id] = perm_level
 
     _LOGGER.info(
         "All permissions for user %s (is_admin=%s): panels=%d, areas=%d, labels=%d",
