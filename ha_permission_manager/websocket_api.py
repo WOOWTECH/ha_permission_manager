@@ -38,6 +38,9 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     """Register WebSocket API handlers."""
     websocket_api.async_register_command(hass, ws_get_panel_permissions)
     websocket_api.async_register_command(hass, ws_get_all_permissions)
+    # Admin panel handlers
+    websocket_api.async_register_command(hass, ws_get_admin_data)
+    websocket_api.async_register_command(hass, ws_set_permission)
     # Area control handlers
     websocket_api.async_register_command(hass, websocket_get_permitted_areas)
     websocket_api.async_register_command(hass, websocket_get_area_entities)
@@ -594,3 +597,186 @@ def ws_get_all_permissions(
         "labels": labels,
         "is_admin": is_admin,
     })
+
+
+# =============================================================================
+# Admin Panel WebSocket Handlers
+# =============================================================================
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "permission_manager/get_admin_data",
+    }
+)
+@websocket_api.async_response
+async def ws_get_admin_data(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Return all data needed for the admin permission manager panel.
+
+    This endpoint is only available to admin users and returns:
+    - users: list of all non-owner, non-system users with id, name, is_admin
+    - resources: dict of resource_type -> list of resources (panels, areas, labels)
+    - permissions: dict of user_id -> {resource_id: permission_level}
+
+    The frontend uses this data to display the permission matrix.
+    """
+    user = connection.user
+
+    if user is None:
+        connection.send_error(msg["id"], "not_authenticated", "User not authenticated")
+        return
+
+    if not user.is_admin:
+        connection.send_error(msg["id"], "forbidden", "Admin access required")
+        return
+
+    # Get all users (excluding owner and system accounts)
+    users_data = []
+    for ha_user in await hass.auth.async_get_users():
+        # Skip owner and system accounts
+        if ha_user.is_owner or ha_user.system_generated:
+            continue
+        users_data.append({
+            "id": ha_user.id,
+            "name": ha_user.name or "Unknown",
+            "is_admin": ha_user.is_admin,
+        })
+
+    # Sort users by name
+    users_data.sort(key=lambda u: u["name"].lower())
+
+    # Get all resources
+    resources = {
+        "panels": [],
+        "areas": [],
+        "labels": [],
+    }
+
+    # Get panels from frontend_panels (excluding internal panels)
+    frontend_panels = hass.data.get("frontend_panels", {})
+    excluded_panels = {
+        "developer-tools", "config", "profile", "media-browser",
+        "history", "logbook", "map", "energy", "todo",
+    }
+    for panel_id, panel in frontend_panels.items():
+        if panel_id in excluded_panels:
+            continue
+        # Get panel title
+        title = panel_id
+        if hasattr(panel, "title") and panel.title:
+            title = panel.title
+        elif hasattr(panel, "config") and isinstance(panel.config, dict):
+            title = panel.config.get("title", panel_id)
+        resources["panels"].append({
+            "id": panel_id,
+            "name": title,
+            "type": "panel",
+        })
+
+    # Get areas
+    area_reg = ar.async_get(hass)
+    for area in area_reg.async_list_areas():
+        resources["areas"].append({
+            "id": area.id,
+            "name": area.name,
+            "type": "area",
+        })
+
+    # Get labels
+    label_reg = lr.async_get(hass)
+    for label in label_reg.async_list_labels():
+        resources["labels"].append({
+            "id": label.label_id,
+            "name": label.name,
+            "type": "label",
+        })
+
+    # Sort resources by name
+    for key in resources:
+        resources[key].sort(key=lambda r: r["name"].lower())
+
+    # Get all permissions from Store
+    domain_data = hass.data.get(DOMAIN, {})
+    all_permissions = domain_data.get("permissions", {})
+
+    _LOGGER.info(
+        "Admin data: %d users, %d panels, %d areas, %d labels",
+        len(users_data),
+        len(resources["panels"]),
+        len(resources["areas"]),
+        len(resources["labels"]),
+    )
+
+    connection.send_result(msg["id"], {
+        "users": users_data,
+        "resources": resources,
+        "permissions": all_permissions,
+    })
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "permission_manager/set_permission",
+        vol.Required("user_id"): vol.All(str, vol.Length(min=1, max=255)),
+        vol.Required("resource_id"): vol.All(str, vol.Length(min=1, max=255)),
+        vol.Required("level"): vol.All(vol.Coerce(int), vol.Range(min=0, max=1)),
+    }
+)
+@websocket_api.async_response
+async def ws_set_permission(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Set permission level for a user and resource.
+
+    This endpoint is only available to admin users.
+
+    Args (in msg):
+        user_id: The user ID to set permission for.
+        resource_id: The resource ID with prefix (e.g., "panel_config", "area_living_room").
+        level: Permission level (0=Closed, 1=View).
+
+    Returns success status.
+    """
+    user = connection.user
+
+    if user is None:
+        connection.send_error(msg["id"], "not_authenticated", "User not authenticated")
+        return
+
+    if not user.is_admin:
+        connection.send_error(msg["id"], "forbidden", "Admin access required")
+        return
+
+    target_user_id = msg["user_id"]
+    resource_id = msg["resource_id"]
+    level = msg["level"]
+
+    # Validate resource_id format (must have valid prefix)
+    valid_prefixes = (PREFIX_PANEL, PREFIX_AREA, PREFIX_LABEL)
+    if not any(resource_id.startswith(p) for p in valid_prefixes):
+        connection.send_error(
+            msg["id"],
+            "invalid_resource",
+            f"Resource ID must start with one of: {valid_prefixes}"
+        )
+        return
+
+    # Import the async_set_permission function from __init__.py
+    from . import async_set_permission
+
+    try:
+        await async_set_permission(hass, target_user_id, resource_id, level)
+        _LOGGER.info(
+            "Permission set: user=%s, resource=%s, level=%d (by admin %s)",
+            target_user_id, resource_id, level, user.id
+        )
+        connection.send_result(msg["id"], {"success": True})
+    except Exception as err:
+        _LOGGER.exception("Failed to set permission: %s", err)
+        connection.send_error(msg["id"], "set_failed", str(err))

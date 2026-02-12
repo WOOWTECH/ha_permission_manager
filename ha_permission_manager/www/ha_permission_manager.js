@@ -310,8 +310,8 @@ class HaPermissionManager extends LitElement {
       hass: { type: Object },
       narrow: { type: Boolean },
       panel: { type: Object },
-      _entities: { type: Array, state: true },
       _users: { type: Array, state: true },
+      _permissions: { type: Object, state: true },
       _resourcesByType: { type: Object, state: true },
       _activeTabIndex: { type: Number, state: true },
       _searchQuery: { type: String, state: true },
@@ -322,13 +322,15 @@ class HaPermissionManager extends LitElement {
 
   constructor() {
     super();
-    this._entities = [];
     this._users = [];
+    this._permissions = {};  // user_id -> {resource_id: level}
     this._resourcesByType = {};
     this._activeTabIndex = 0;
     this._searchQuery = "";
     this._saving = {};
     this._loading = true;
+    this._dataLoaded = false;
+    this._loadingData = false;
   }
 
   // Get current language translations
@@ -339,61 +341,36 @@ class HaPermissionManager extends LitElement {
 
   updated(changedProperties) {
     super.updated(changedProperties);
-    if (changedProperties.has("hass") && this.hass) {
-      this._loadEntities();
+    if (changedProperties.has("hass") && this.hass && !this._dataLoaded) {
+      this._loadAdminData();
     }
   }
 
-  _loadEntities() {
-    const permEntities = Object.values(this.hass.states)
-      .filter((entity) => entity.entity_id.startsWith("select.permission_manager_"))
-      .map((entity) => ({
-        entityId: entity.entity_id,
-        state: entity.state,
-        userId: entity.attributes.user_id,
-        userName: entity.attributes.user_name,
-        resourceId: entity.attributes.resource_id,
-        resourceName: entity.attributes.resource_name,
-        resourceType: entity.attributes.resource_type,
-        isAdmin: entity.attributes.is_admin,
-        isProtected: entity.attributes.is_protected,
-      }));
+  async _loadAdminData() {
+    // Prevent multiple concurrent loads
+    if (this._loadingData) return;
+    this._loadingData = true;
 
-    this._entities = permEntities;
-    this._loading = false;
+    try {
+      // Fetch all data from websocket API
+      const result = await this.hass.callWS({
+        type: "permission_manager/get_admin_data",
+      });
 
-    // Extract unique users
-    const usersMap = new Map();
-    permEntities.forEach((e) => {
-      if (!usersMap.has(e.userId)) {
-        usersMap.set(e.userId, {
-          id: e.userId,
-          name: e.userName,
-          isAdmin: e.isAdmin,
-        });
-      }
-    });
-    this._users = Array.from(usersMap.values());
-
-    // Group resources by type
-    const resourcesByType = {};
-    const seenResources = new Set();
-    permEntities.forEach((e) => {
-      const key = e.resourceId;
-      if (!seenResources.has(key)) {
-        seenResources.add(key);
-        const typeKey = getResourceTypeKey(e.resourceType);
-        if (!resourcesByType[typeKey]) {
-          resourcesByType[typeKey] = [];
-        }
-        resourcesByType[typeKey].push({
-          id: e.resourceId,
-          name: e.resourceName,
-          type: e.resourceType,
-        });
-      }
-    });
-    this._resourcesByType = resourcesByType;
+      this._users = result.users || [];
+      this._permissions = result.permissions || {};
+      this._resourcesByType = result.resources || {};
+      this._dataLoaded = true;
+      this._loading = false;
+    } catch (err) {
+      console.error("[PermissionManager] Failed to load admin data:", err);
+      this._users = [];
+      this._permissions = {};
+      this._resourcesByType = {};
+      this._loading = false;
+    } finally {
+      this._loadingData = false;
+    }
   }
 
   _getAvailableTabs() {
@@ -427,42 +404,61 @@ class HaPermissionManager extends LitElement {
     return resources;
   }
 
-  _getPermission(userId, resourceId) {
-    const entity = this._entities.find(
-      (e) => e.userId === userId && e.resourceId === resourceId
-    );
-    return entity ? entity.state : "0";
+  _getPermission(userId, resourceId, resourceType) {
+    // Build the full resource ID with prefix
+    const prefixMap = {
+      panel: "panel_",
+      area: "area_",
+      label: "label_",
+    };
+    const prefix = prefixMap[resourceType] || "";
+    const fullResourceId = prefix + resourceId;
+
+    const userPerms = this._permissions[userId];
+    if (!userPerms) return "0";
+    const level = userPerms[fullResourceId];
+    return level !== undefined ? String(level) : "0";
   }
 
-  _getEntityId(userId, resourceId) {
-    const entity = this._entities.find(
-      (e) => e.userId === userId && e.resourceId === resourceId
-    );
-    return entity ? entity.entityId : null;
+  _isUserAdmin(userId) {
+    const user = this._users.find((u) => u.id === userId);
+    return user ? user.is_admin : false;
   }
 
-  _isProtected(userId, resourceId) {
-    const entity = this._entities.find(
-      (e) => e.userId === userId && e.resourceId === resourceId
-    );
-    return entity ? entity.isProtected : false;
-  }
+  async _changePermission(userId, resourceId, resourceType, newValue) {
+    // Build the full resource ID with prefix
+    const prefixMap = {
+      panel: "panel_",
+      area: "area_",
+      label: "label_",
+    };
+    const prefix = prefixMap[resourceType] || "";
+    const fullResourceId = prefix + resourceId;
+    const savingKey = `${userId}_${fullResourceId}`;
 
-  async _changePermission(entityId, newValue) {
-    if (!entityId || this._saving[entityId]) return;
+    if (this._saving[savingKey]) return;
 
-    this._saving = { ...this._saving, [entityId]: true };
+    this._saving = { ...this._saving, [savingKey]: true };
 
     try {
-      await this.hass.callService("select", "select_option", {
-        entity_id: entityId,
-        option: newValue,
+      await this.hass.callWS({
+        type: "permission_manager/set_permission",
+        user_id: userId,
+        resource_id: fullResourceId,
+        level: parseInt(newValue, 10),
       });
+
+      // Update local state
+      if (!this._permissions[userId]) {
+        this._permissions[userId] = {};
+      }
+      this._permissions[userId][fullResourceId] = parseInt(newValue, 10);
+      this._permissions = { ...this._permissions };
     } catch (err) {
       console.error("Failed to save permission:", err);
     } finally {
       const newSaving = { ...this._saving };
-      delete newSaving[entityId];
+      delete newSaving[savingKey];
       this._saving = newSaving;
     }
   }
@@ -1080,7 +1076,7 @@ class HaPermissionManager extends LitElement {
             <div class="user-avatar">${user.name ? user.name.charAt(0) : "?"}</div>
             <div class="user-info">
               <span class="user-name">${user.name || "Unknown"}</span>
-              ${user.isAdmin
+              ${user.is_admin
                 ? html`<span class="admin-badge">${i18n.admin}</span>`
                 : ""}
             </div>
@@ -1094,12 +1090,11 @@ class HaPermissionManager extends LitElement {
   }
 
   _renderPermissionCell(user, resource) {
-    const entityId = this._getEntityId(user.id, resource.id);
-    if (!entityId) return html`<td class="permission-cell">-</td>`;
-
-    const currentLevel = this._getPermission(user.id, resource.id);
-    const isProtected = this._isProtected(user.id, resource.id);
-    const isSaving = this._saving[entityId];
+    const currentLevel = this._getPermission(user.id, resource.id, resource.type);
+    const prefixMap = { panel: "panel_", area: "area_", label: "label_" };
+    const prefix = prefixMap[resource.type] || "";
+    const savingKey = `${user.id}_${prefix}${resource.id}`;
+    const isSaving = this._saving[savingKey];
     const i18n = this._i18n;
 
     return html`
@@ -1107,8 +1102,8 @@ class HaPermissionManager extends LitElement {
         <div class="permission-select">
           <select
             .value=${currentLevel}
-            ?disabled=${isProtected || isSaving}
-            @change=${(e) => this._changePermission(entityId, e.target.value)}
+            ?disabled=${isSaving}
+            @change=${(e) => this._changePermission(user.id, resource.id, resource.type, e.target.value)}
             style="border-left: 3px solid ${this._getPermissionColor(currentLevel)}"
           >
             ${PERMISSION_LEVELS.map(
@@ -1119,7 +1114,6 @@ class HaPermissionManager extends LitElement {
               `
             )}
           </select>
-          ${isProtected ? html`<span class="protected-indicator" title="${i18n.protected}">🔒</span>` : ""}
         </div>
       </td>
     `;
