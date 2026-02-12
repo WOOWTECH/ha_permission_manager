@@ -122,6 +122,9 @@ const DOMAIN_ORDER = [
   "alarm_control_panel", "update",
 ];
 
+// States considered "active" for counting purposes
+const ACTIVE_STATES = ["on", "playing", "open", "unlocked", "heat", "cool", "heat_cool", "auto", "cleaning", "home"];
+
 // Translations
 const TRANSLATIONS = {
   en: {
@@ -1205,11 +1208,15 @@ class CpSummaryCard extends LitElement {
     return t[key] || key;
   }
 
+  get totalCount() {
+    return (this.entities || []).length;
+  }
+
   get activeCount() {
     if (!this.entities || !this.hass) return 0;
     return this.entities.filter((entityId) => {
       const state = this.hass.states[entityId]?.state;
-      return ["on", "playing", "open", "unlocked", "heat", "cool", "heat_cool", "auto", "cleaning", "home"].includes(state);
+      return ACTIVE_STATES.includes(state);
     }).length;
   }
 
@@ -1218,10 +1225,7 @@ class CpSummaryCard extends LitElement {
   }
 
   get stateText() {
-    if (this.activeCount === 0) {
-      return `0 ${this._t('on')}`;
-    }
-    return `${this.activeCount} ${this._t('on')}`;
+    return `${this.totalCount} ${this._t('entities')} · ${this.activeCount} ${this._t('on')}`;
   }
 
   get domainLabel() {
@@ -1268,7 +1272,9 @@ customElements.define("cp-summary-card", CpSummaryCard);
 class CpAreaCard extends LitElement {
   static get properties() {
     return {
+      hass: { type: Object },
       area: { type: Object },
+      areaEntities: { type: Object },
     };
   }
 
@@ -1284,6 +1290,10 @@ class CpAreaCard extends LitElement {
         padding: 16px;
         cursor: pointer;
         transition: background 0.2s ease, transform 0.1s ease;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
       }
 
       .area-card:hover {
@@ -1324,6 +1334,29 @@ class CpAreaCard extends LitElement {
     `;
   }
 
+  _t(key) {
+    const lang = this.hass?.language || "en";
+    const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+    return t[key] || key;
+  }
+
+  _getAllEntityIds() {
+    if (!this.areaEntities) return [];
+    const ids = [];
+    for (const entityIds of Object.values(this.areaEntities)) {
+      ids.push(...entityIds);
+    }
+    return ids;
+  }
+
+  _getActiveCount() {
+    if (!this.hass) return 0;
+    return this._getAllEntityIds().filter((entityId) => {
+      const state = this.hass.states[entityId]?.state;
+      return ACTIVE_STATES.includes(state);
+    }).length;
+  }
+
   handleClick() {
     this.dispatchEvent(
       new CustomEvent("area-selected", {
@@ -1337,7 +1370,8 @@ class CpAreaCard extends LitElement {
   render() {
     const icon = this.area.icon || "mdi:home";
     const name = this.area.name || this.area.id;
-    const count = this.area.entity_count || 0;
+    const total = this.area.entity_count || 0;
+    const activeCount = this._getActiveCount();
 
     return html`
       <div class="area-card" @click=${this.handleClick}>
@@ -1345,7 +1379,7 @@ class CpAreaCard extends LitElement {
           <ha-icon icon=${icon}></ha-icon>
         </div>
         <div class="area-name">${name}</div>
-        <div class="area-count">${count} entities</div>
+        <div class="area-count">${total} ${this._t('entities')} · ${activeCount} ${this._t('on')}</div>
       </div>
     `;
   }
@@ -2161,7 +2195,9 @@ class HaControlPanel extends LitElement {
                 ${this._areas.map(
                   (area) => html`
                     <cp-area-card
+                      .hass=${this.hass}
                       .area=${area}
+                      .areaEntities=${this._areaEntities[area.id] || {}}
                       @area-selected=${this._handleAreaSelected}
                     ></cp-area-card>
                   `
