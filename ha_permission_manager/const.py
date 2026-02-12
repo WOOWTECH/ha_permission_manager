@@ -33,7 +33,7 @@ PANEL_TITLE = "Permission Manager"
 PANEL_TITLE_ZH = "權限管理器"
 PANEL_ICON = "mdi:shield-lock"
 PANEL_URL = "ha_permission_manager"
-PANEL_VERSION = "3.2.0"
+PANEL_VERSION = "3.3.1"
 
 # Control Panel configuration (unified area/label control)
 CONTROL_PANEL_URL = "ha-control-panel"

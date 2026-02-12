@@ -400,6 +400,9 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     # Use version query param for cache busting
     add_extra_js_url(hass, f"/local/ha_sidebar_filter.js?v={PANEL_VERSION}")
 
+    # Register lovelace filter as extra JS (runs on every page)
+    add_extra_js_url(hass, f"/local/ha_lovelace_filter.js?v={PANEL_VERSION}")
+
     _LOGGER.debug("Frontend panels registered")
 
 

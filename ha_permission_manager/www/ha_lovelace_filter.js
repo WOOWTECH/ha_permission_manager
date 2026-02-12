@@ -7,6 +7,9 @@
 (function() {
   "use strict";
 
+  // Loading overlay is owned by ha_sidebar_filter.js — do not create here.
+  // This prevents the race condition where duplicate overlays cause permanent UI blocking.
+
   const PERM_DENY = 0;
 
   // State
@@ -318,9 +321,6 @@
     if (initialized) return;
     initialized = true;
 
-    // Wait for HA to fully load
-    await new Promise(r => setTimeout(r, 2000));
-
     await fetchAllPermissions();
     lastPermHash = JSON.stringify(permissions);
     checkAndApplyFilter();
@@ -347,7 +347,7 @@
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {
-    setTimeout(init, 2000);
+    init();
   }
 
   // Debug object removed for security - do not expose internal state in production

@@ -7,6 +7,30 @@
 (function() {
   "use strict";
 
+  // === IMMEDIATE LOADING OVERLAY ===
+  // Blocks content visibility until permissions are checked.
+  // Must execute synchronously before any async work.
+  // Guard: only create if no overlay exists yet (prevents duplicate with lovelace filter)
+  if (!document.getElementById("perm-loading-overlay")) {
+    const _loadingOverlay = document.createElement("div");
+    _loadingOverlay.id = "perm-loading-overlay";
+    _loadingOverlay.style.cssText =
+      "position:fixed;top:0;left:0;right:0;bottom:0;" +
+      "z-index:9999;" +
+      "background:var(--primary-background-color,#fafafa);" +
+      "transition:opacity 0.3s ease;";
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      _loadingOverlay.style.background = "var(--primary-background-color, #111111)";
+    }
+    if (document.body) {
+      document.body.appendChild(_loadingOverlay);
+    } else {
+      document.addEventListener("DOMContentLoaded", () => {
+        document.body.appendChild(_loadingOverlay);
+      });
+    }
+  }
+
   const PERM_DENY = 0;
 
   // Sidebar title translations
@@ -40,6 +64,19 @@
     initialized = false;
     lastLanguage = null;
     lastPermissionHash = null;
+  }
+
+  /**
+   * Remove loading overlay with fade-out animation
+   */
+  function removeLoadingOverlay() {
+    // Use querySelectorAll to remove ALL overlays (defense against duplicate IDs)
+    const overlays = document.querySelectorAll("#perm-loading-overlay");
+    if (overlays.length === 0) return;
+    overlays.forEach(el => {
+      el.style.opacity = "0";
+      setTimeout(() => el.remove(), 300);
+    });
   }
 
   /**
@@ -593,7 +630,7 @@
       if (newHaElement && newHaElement !== currentHaElement) {
         currentHaElement = newHaElement;
         resetState();
-        setTimeout(init, 500);
+        init();
       }
     });
 
@@ -615,9 +652,6 @@
     if (initialized) return;
     initialized = true;
 
-    // Wait a bit for HA to fully load
-    await new Promise(r => setTimeout(r, 500));
-
     // Initialize lastLanguage from current hass state
     const hass = await waitForHass();
     if (hass) {
@@ -634,6 +668,9 @@
     await subscribeToChanges();
     await checkCurrentPanelAccess();
 
+    // Permission check complete - remove loading overlay
+    removeLoadingOverlay();
+
     // Initialize sidebar title - prefer hass.panels method, fallback to DOM
     if (!updateSidebarTitleViaHass(lastLanguage)) {
       initSidebarTitle(); // Fallback to DOM manipulation
@@ -647,9 +684,8 @@
       init();
     });
   } else {
-    // Small delay to ensure HA is ready
     setupHassObserver();
-    setTimeout(init, 500);
+    init();
   }
 
   // Debug object removed for security - do not expose internal state in production
