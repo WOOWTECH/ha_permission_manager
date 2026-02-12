@@ -224,6 +224,9 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
                     )
             elif action == "remove":
                 resource_id = f"{PREFIX_AREA}{area_id}"
+                # Clean up permissions from Store
+                await async_delete_resource_permissions(hass, resource_id)
+                # Clean up entities (will be removed in Task 004)
                 await async_remove_entities_for_resource(hass, resource_id)
         except Exception:
             _LOGGER.exception("Error handling area registry update")
@@ -247,6 +250,9 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
                     )
             elif action == "remove":
                 resource_id = f"{PREFIX_LABEL}{label_id}"
+                # Clean up permissions from Store
+                await async_delete_resource_permissions(hass, resource_id)
+                # Clean up entities (will be removed in Task 004)
                 await async_remove_entities_for_resource(hass, resource_id)
         except Exception:
             _LOGGER.exception("Error handling label registry update")
@@ -272,6 +278,9 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
             _LOGGER.debug("User removed: user_id=%s", user_id)
 
             if user_id:
+                # Clean up permissions from Store
+                await async_delete_user_permissions(hass, user_id)
+                # Clean up entities (will be removed in Task 004)
                 await async_remove_entities_for_user(hass, user_id)
         except Exception:
             _LOGGER.exception("Error handling user removed event")
@@ -324,8 +333,11 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
 
             elif action == "delete":
                 resource_id = f"{PREFIX_PANEL}{url_path}"
+                # Clean up permissions from Store
+                await async_delete_resource_permissions(hass, resource_id)
+                # Clean up entities (will be removed in Task 004)
                 await async_remove_entities_for_resource(hass, resource_id)
-                _LOGGER.info("Removed permission entities for deleted dashboard: %s", url_path)
+                _LOGGER.info("Removed permissions for deleted dashboard: %s", url_path)
 
         except Exception:
             _LOGGER.exception("Error handling lovelace updated event")
@@ -383,8 +395,11 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
             control_panel_id = f"{PREFIX_PANEL}{CONTROL_PANEL_URL}"
             deleted_panel_ids = stored_panel_ids - current_panel_ids - {self_panel_id, control_panel_id}
             for resource_id in deleted_panel_ids:
+                # Clean up permissions from Store
+                await async_delete_resource_permissions(hass, resource_id)
+                # Clean up entities (will be removed in Task 004)
                 await async_remove_entities_for_resource(hass, resource_id)
-                _LOGGER.info("Removed permission entities for deleted panel: %s", resource_id)
+                _LOGGER.info("Removed permissions for deleted panel: %s", resource_id)
 
         except Exception:
             _LOGGER.exception("Error handling panels updated event")
