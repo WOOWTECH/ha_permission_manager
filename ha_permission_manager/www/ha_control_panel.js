@@ -1394,7 +1394,9 @@ customElements.define("cp-area-card", CpAreaCard);
 class CpLabelCard extends LitElement {
   static get properties() {
     return {
+      hass: { type: Object },
       label: { type: Object },
+      labelEntities: { type: Object },
     };
   }
 
@@ -1456,6 +1458,29 @@ class CpLabelCard extends LitElement {
     `;
   }
 
+  _t(key) {
+    const lang = this.hass?.language || "en";
+    const t = TRANSLATIONS[lang] || TRANSLATIONS.en;
+    return t[key] || key;
+  }
+
+  _getAllEntityIds() {
+    if (!this.labelEntities) return [];
+    const ids = [];
+    for (const entityIds of Object.values(this.labelEntities)) {
+      ids.push(...entityIds);
+    }
+    return ids;
+  }
+
+  _getActiveCount() {
+    if (!this.hass) return 0;
+    return this._getAllEntityIds().filter((entityId) => {
+      const state = this.hass.states[entityId]?.state;
+      return ACTIVE_STATES.includes(state);
+    }).length;
+  }
+
   _handleClick() {
     this.dispatchEvent(
       new CustomEvent("label-selected", {
@@ -1470,6 +1495,8 @@ class CpLabelCard extends LitElement {
     const icon = this.label.icon || "mdi:label";
     const color = getLabelColor(this.label.color);
     const colorRgb = hexToRgb(color);
+    const total = this.label.entity_count || 0;
+    const activeCount = this._getActiveCount();
 
     return html`
       <div
@@ -1481,7 +1508,7 @@ class CpLabelCard extends LitElement {
           <ha-icon icon=${icon}></ha-icon>
         </div>
         <div class="label-name">${this.label.name}</div>
-        <div class="label-count">${this.label.entity_count || 0}</div>
+        <div class="label-count">${total} ${this._t('entities')} · ${activeCount} ${this._t('on')}</div>
       </div>
     `;
   }
@@ -2239,7 +2266,9 @@ class HaControlPanel extends LitElement {
                 ${this._labels.map(
                   (label) => html`
                     <cp-label-card
+                      .hass=${this._hass}
                       .label=${label}
+                      .labelEntities=${this._labelEntities[label.id] || {}}
                       @label-selected=${this._handleLabelSelected}
                     ></cp-label-card>
                   `
