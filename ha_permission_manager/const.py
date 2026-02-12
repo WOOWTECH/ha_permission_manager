@@ -3,6 +3,10 @@ import re
 
 DOMAIN = "ha_permission_manager"
 
+# Storage versioning (for hass.helpers.storage.Store)
+STORAGE_VERSION = 1
+STORAGE_KEY = DOMAIN
+
 PERMISSION_OPTIONS = ["0", "1"]
 PERMISSION_LABELS = {
     "0": "Closed",
