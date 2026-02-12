@@ -10,12 +10,9 @@ from homeassistant.components.frontend import (
     async_remove_panel,
 )
 from homeassistant.components.http import StaticPathConfig
-from homeassistant.components.panel_custom import DOMAIN as PANEL_CUSTOM_DOMAIN
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, Event, callback
-from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers import label_registry as lr
 from homeassistant.helpers.storage import Store
 
 from .const import (
@@ -40,8 +37,6 @@ from .const import (
 from .websocket_api import async_register_websocket_api
 
 _LOGGER = logging.getLogger(__name__)
-
-PLATFORMS = ["select"]
 
 async def _async_cleanup_obsolete_permissions(hass: HomeAssistant) -> None:
     """Remove orphaned script, automation, and custom permission entities.
@@ -162,9 +157,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register the sidebar panel
     await _async_register_panel(hass)
 
-    # Forward to select platform to create entities
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
     # Set up event listeners for auto-refresh
     await _async_setup_listeners(hass)
 
@@ -181,29 +173,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     for unsub in domain_data.get("unsubscribe", []):
         unsub()
 
-    # Unload platforms
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    # Remove panels
+    async_remove_panel(hass, PANEL_URL)
+    async_remove_panel(hass, CONTROL_PANEL_URL)
 
-    if unload_ok:
-        # Remove panels
-        async_remove_panel(hass, PANEL_URL)
-        async_remove_panel(hass, CONTROL_PANEL_URL)
+    # Clean up stored data
+    hass.data.pop(DOMAIN, None)
 
-        # Clean up stored data
-        hass.data.pop(DOMAIN, None)
-
-    return unload_ok
+    return True
 
 
 async def _async_setup_listeners(hass: HomeAssistant) -> None:
     """Set up event listeners for registry changes."""
-    from .select import (
-        async_add_entities_for_resource,
-        async_remove_entities_for_resource,
-        async_add_entities_for_user,
-        async_remove_entities_for_user,
-        async_update_user_info,
-    )
 
     async def _handle_area_registry_update(event: Event) -> None:
         """Handle area registry changes."""
@@ -213,21 +194,10 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
 
             _LOGGER.debug("Area registry update: action=%s, area_id=%s", action, area_id)
 
-            if action == "create":
-                # Get area info
-                registry = ar.async_get(hass)
-                area = registry.async_get_area(area_id)
-                if area:
-                    resource_id = f"{PREFIX_AREA}{area_id}"
-                    await async_add_entities_for_resource(
-                        hass, resource_id, area.name, "area"
-                    )
-            elif action == "remove":
+            if action == "remove":
                 resource_id = f"{PREFIX_AREA}{area_id}"
                 # Clean up permissions from Store
                 await async_delete_resource_permissions(hass, resource_id)
-                # Clean up entities (will be removed in Task 004)
-                await async_remove_entities_for_resource(hass, resource_id)
         except Exception:
             _LOGGER.exception("Error handling area registry update")
 
@@ -239,21 +209,10 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
 
             _LOGGER.debug("Label registry update: action=%s, label_id=%s", action, label_id)
 
-            if action == "create":
-                # Get label info
-                registry = lr.async_get(hass)
-                label = registry.async_get_label(label_id)
-                if label:
-                    resource_id = f"{PREFIX_LABEL}{label_id}"
-                    await async_add_entities_for_resource(
-                        hass, resource_id, label.name, "label"
-                    )
-            elif action == "remove":
+            if action == "remove":
                 resource_id = f"{PREFIX_LABEL}{label_id}"
                 # Clean up permissions from Store
                 await async_delete_resource_permissions(hass, resource_id)
-                # Clean up entities (will be removed in Task 004)
-                await async_remove_entities_for_resource(hass, resource_id)
         except Exception:
             _LOGGER.exception("Error handling label registry update")
 
@@ -262,12 +221,8 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
         try:
             user_id = event.data.get("user_id")
             _LOGGER.debug("User added: user_id=%s", user_id)
-
-            if user_id:
-                # Get user info from auth
-                user = await hass.auth.async_get_user(user_id)
-                if user and not user.system_generated:
-                    await async_add_entities_for_user(hass, user)
+            # New users will be visible in the permission manager UI
+            # No entity creation needed - permissions are managed via Store
         except Exception:
             _LOGGER.exception("Error handling user added event")
 
@@ -280,8 +235,6 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
             if user_id:
                 # Clean up permissions from Store
                 await async_delete_user_permissions(hass, user_id)
-                # Clean up entities (will be removed in Task 004)
-                await async_remove_entities_for_user(hass, user_id)
         except Exception:
             _LOGGER.exception("Error handling user removed event")
 
@@ -289,24 +242,9 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
         """Handle user updated (including admin status and name changes)."""
         try:
             user_id = event.data.get("user_id")
-            _LOGGER.info("User updated event: user_id=%s, data=%s", user_id, event.data)
-
-            if user_id:
-                # Get current user info from auth
-                user = await hass.auth.async_get_user(user_id)
-                if user and not user.system_generated:
-                    # Check if user is now admin - use HA built-in property
-                    is_admin = user.is_admin
-                    # Get user name
-                    user_name = user.name or "Unknown"
-
-                    _LOGGER.info(
-                        "User %s (%s) current info: name=%s, admin=%s",
-                        user_name, user_id, user_name, is_admin
-                    )
-
-                    # Update permission entities (both name and admin status)
-                    await async_update_user_info(hass, user_id, new_name=user_name, new_is_admin=is_admin)
+            _LOGGER.debug("User updated event: user_id=%s", user_id)
+            # User info changes are reflected in permission manager UI dynamically
+            # No entity updates needed - permissions are managed via Store
         except Exception:
             _LOGGER.exception("Error handling user updated event")
 
@@ -316,91 +254,27 @@ async def _async_setup_listeners(hass: HomeAssistant) -> None:
             action = event.data.get("action")
             url_path = event.data.get("url_path")
 
-            _LOGGER.info("Lovelace updated: action=%s, url_path=%s, data=%s", action, url_path, event.data)
+            _LOGGER.debug("Lovelace updated: action=%s, url_path=%s", action, url_path)
 
             if not url_path:
                 _LOGGER.debug("No url_path in lovelace_updated event, skipping")
                 return
 
-            if action == "create":
-                # Get dashboard title from event data
-                title = event.data.get("title") or url_path
-                resource_id = f"{PREFIX_PANEL}{url_path}"
-                await async_add_entities_for_resource(
-                    hass, resource_id, title, "panel"
-                )
-                _LOGGER.info("Added permission entities for new dashboard: %s (%s)", title, url_path)
-
-            elif action == "delete":
+            if action == "delete":
                 resource_id = f"{PREFIX_PANEL}{url_path}"
                 # Clean up permissions from Store
                 await async_delete_resource_permissions(hass, resource_id)
-                # Clean up entities (will be removed in Task 004)
-                await async_remove_entities_for_resource(hass, resource_id)
                 _LOGGER.info("Removed permissions for deleted dashboard: %s", url_path)
 
         except Exception:
             _LOGGER.exception("Error handling lovelace updated event")
 
     async def _handle_panels_updated(event: Event) -> None:
-        """Handle panel registry changes - sync new/deleted panels."""
+        """Handle panel registry changes - clean up deleted panels."""
         try:
-            _LOGGER.info("Panels updated event received")
-
-            # Get current panels from HA using public API
-            current_panels = _get_frontend_panels(hass)
-            if not current_panels:
-                _LOGGER.debug("No frontend_panels data found")
-                return
-
-            # Get stored resources (panels only)
-            domain_data = hass.data.get(DOMAIN, {})
-            stored_resources = domain_data.get("resources", [])
-            stored_panel_ids = {
-                r.id for r in stored_resources if r.type == "panel"
-            }
-
-            # Build set of current panel IDs (with prefix)
-            current_panel_ids = set()
-            for panel_id, panel in current_panels.items():
-                # Skip our own panels
-                if panel_id in ("ha_permission_manager", CONTROL_PANEL_URL):
-                    continue
-                resource_id = f"{PREFIX_PANEL}{panel_id}"
-                current_panel_ids.add(resource_id)
-
-            # Find new panels (in current but not in stored)
-            new_panel_ids = current_panel_ids - stored_panel_ids
-            for resource_id in new_panel_ids:
-                panel_id = resource_id[len(PREFIX_PANEL):]
-                panel = current_panels.get(panel_id)
-                if panel:
-                    # Get panel title
-                    title = panel_id
-                    if isinstance(panel, dict):
-                        title = panel.get("title") or panel.get("sidebar_title") or panel_id
-                    elif hasattr(panel, "title"):
-                        title = panel.title or panel_id
-                    elif hasattr(panel, "sidebar_title"):
-                        title = panel.sidebar_title or panel_id
-
-                    await async_add_entities_for_resource(
-                        hass, resource_id, str(title), "panel"
-                    )
-                    _LOGGER.info("Added permission entities for new panel: %s (%s)", title, panel_id)
-
-            # Find deleted panels (in stored but not in current)
-            # Note: We need to exclude our own panels from deletion check
-            self_panel_id = f"{PREFIX_PANEL}ha_permission_manager"
-            control_panel_id = f"{PREFIX_PANEL}{CONTROL_PANEL_URL}"
-            deleted_panel_ids = stored_panel_ids - current_panel_ids - {self_panel_id, control_panel_id}
-            for resource_id in deleted_panel_ids:
-                # Clean up permissions from Store
-                await async_delete_resource_permissions(hass, resource_id)
-                # Clean up entities (will be removed in Task 004)
-                await async_remove_entities_for_resource(hass, resource_id)
-                _LOGGER.info("Removed permissions for deleted panel: %s", resource_id)
-
+            _LOGGER.debug("Panels updated event received")
+            # Panel deletion cleanup is handled via lovelace_updated event
+            # This handler is kept for potential future use
         except Exception:
             _LOGGER.exception("Error handling panels updated event")
 
