@@ -129,7 +129,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initialize data storage
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN]["entry"] = entry
-    hass.data[DOMAIN]["entities"] = {}
     hass.data[DOMAIN]["unsubscribe"] = []
 
     # Initialize Store for persistent permission storage

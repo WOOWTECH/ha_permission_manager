@@ -35,6 +35,6 @@ class HaPermissionManagerConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             description_placeholders={
-                "info": "This will create permission entities for all users and resources."
+                "info": "This will set up permission management for all users and resources."
             },
         )

@@ -27,6 +27,7 @@
   let isAdmin = false;
   let initialized = false;
   let lastLanguage = null;
+  let lastPermissionHash = null;
   let hassObserverSetup = false;
 
   /**
@@ -38,6 +39,7 @@
     isAdmin = false;
     initialized = false;
     lastLanguage = null;
+    lastPermissionHash = null;
   }
 
   /**
@@ -203,12 +205,13 @@
 
     let panelToCheck = currentPanel;
 
-    // Only block if explicitly denied
-    if (permissions[panelToCheck] === PERM_DENY) {
-      showAccessDenied();
-    } else {
-      // 有權限，移除 Access Denied 並顯示原有內容
+    // Fail-secure: only allow if explicitly granted (matches sidebar filtering logic)
+    const level = permissions[panelToCheck];
+    if (level !== undefined && level > PERM_DENY) {
       hideAccessDenied();
+    } else {
+      // undefined or 0 = deny access
+      showAccessDenied();
     }
   }
 
@@ -317,46 +320,6 @@
     const hass = await waitForHass();
     if (!hass || !hass.connection) return;
 
-    // Listen for permission entity changes
-    // Entity IDs can be select.perm_* or select.permission_manager_*
-    hass.connection.subscribeEvents(async (event) => {
-      const entityId = event.data?.entity_id;
-      if (!entityId || !(entityId.startsWith("select.perm_") || entityId.startsWith("select.permission_manager_"))) return;
-
-      const newState = event.data?.new_state;
-      if (!newState) return;
-
-      // Only care about panel permissions
-      if (newState.attributes?.resource_type !== "panel") return;
-
-      // Only care about permissions for the current user
-      const permUserId = newState.attributes?.user_id;
-      if (!permUserId) {
-        return;
-      }
-
-      // Check if this permission change is for the current user
-      // If currentUserId is not set yet, try to get it
-      if (!currentUserId) {
-        const { user_id } = await fetchPermissions();
-        if (!user_id) {
-          console.warn("[SidebarFilter] Cannot determine current user ID");
-          return;
-        }
-      }
-
-      if (permUserId !== currentUserId) {
-        return;
-      }
-
-      // Small delay to ensure state is fully propagated
-      await new Promise(r => setTimeout(r, 100));
-
-      // Re-apply filter
-      await applySidebarFilter();
-      await checkCurrentPanelAccess();
-    }, "state_changed");
-
     // Listen for user_updated events (when admin status changes in HA)
     hass.connection.subscribeEvents(async (event) => {
       // Check if current user's admin status changed
@@ -392,7 +355,7 @@
       const action = event.data?.action;
 
       if (action === "create" || action === "delete") {
-        // Wait a bit for backend to create/remove permission entities
+        // Wait a bit for backend to update permissions
         await new Promise(r => setTimeout(r, 500));
 
         // Refresh originalPanels from current hass.panels
@@ -406,13 +369,21 @@
       }
     }, "lovelace_updated");
 
-    // Also poll every 5 seconds as fallback (reduced from original)
+    // Poll every 5 seconds to detect permission changes (replaces dead entity subscriptions)
     setInterval(async () => {
       const oldIsAdmin = isAdmin;
-      const { is_admin } = await fetchPermissions();
+      const { permissions, is_admin } = await fetchPermissions();
 
       if (oldIsAdmin !== is_admin) {
         location.reload();
+        return;
+      }
+
+      const newHash = JSON.stringify(permissions);
+      if (newHash !== lastPermissionHash) {
+        lastPermissionHash = newHash;
+        await applySidebarFilter();
+        await checkCurrentPanelAccess();
       }
     }, 5000);
 
@@ -654,6 +625,11 @@
     }
 
     await applySidebarFilter();
+
+    // Initialize permission hash for change detection polling
+    const { permissions: initPerms } = await fetchPermissions();
+    lastPermissionHash = JSON.stringify(initPerms);
+
     watchNavigation();
     await subscribeToChanges();
     await checkCurrentPanelAccess();

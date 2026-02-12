@@ -295,20 +295,20 @@
   }
 
   /**
-   * Subscribe to permission changes
+   * Poll for permission changes (replaces dead entity subscriptions)
    */
-  async function subscribeToChanges() {
-    const hass = await waitForHass();
-    if (!hass || !hass.connection) return;
+  let lastPermHash = null;
 
-    // Entity IDs can be select.perm_* or select.permission_manager_*
-    hass.connection.subscribeEvents(async (event) => {
-      const entityId = event.data?.entity_id;
-      if (!entityId || !(entityId.startsWith("select.perm_") || entityId.startsWith("select.permission_manager_"))) return;
-
-      await fetchAllPermissions();
-      checkAndApplyFilter();
-    }, "state_changed");
+  function startPermissionPolling() {
+    setInterval(async () => {
+      const result = await fetchAllPermissions();
+      if (!result) return;
+      const newHash = JSON.stringify(result);
+      if (newHash !== lastPermHash) {
+        lastPermHash = newHash;
+        checkAndApplyFilter();
+      }
+    }, 5000);
   }
 
   /**
@@ -322,8 +322,9 @@
     await new Promise(r => setTimeout(r, 2000));
 
     await fetchAllPermissions();
+    lastPermHash = JSON.stringify(permissions);
     checkAndApplyFilter();
-    await subscribeToChanges();
+    startPermissionPolling();
 
     // Watch for navigation
     window.addEventListener("popstate", () => {

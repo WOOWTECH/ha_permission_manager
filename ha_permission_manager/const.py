@@ -1,5 +1,4 @@
 """Constants for ha_permission_manager."""
-import re
 
 DOMAIN = "ha_permission_manager"
 
@@ -18,12 +17,6 @@ PERMISSION_LABELS = {
 PERM_CLOSED = 0
 PERM_VIEW = 1
 
-# Permission Manager entity patterns (from child components)
-# Entity ID format: select.permission_manager_{user}_{resource_type}_{resource}
-PERM_PREFIX = "select.permission_manager_"
-PERM_AREA_TYPE = "area"
-PERM_LABEL_TYPE = "label"
-
 # Resource type prefixes
 PREFIX_AREA = "area_"
 PREFIX_LABEL = "label_"
@@ -40,7 +33,7 @@ PANEL_TITLE = "Permission Manager"
 PANEL_TITLE_ZH = "權限管理器"
 PANEL_ICON = "mdi:shield-lock"
 PANEL_URL = "ha_permission_manager"
-PANEL_VERSION = "3.1.0"
+PANEL_VERSION = "3.2.0"
 
 # Control Panel configuration (unified area/label control)
 CONTROL_PANEL_URL = "ha-control-panel"
@@ -95,22 +88,3 @@ DOMAIN_COLORS = {
     "lock": "#F44336",        # Red
     "media_player": "#E91E63",  # Pink
 }
-
-
-def sanitize_slug(name: str) -> str:
-    """Sanitize a name for use in entity IDs."""
-    # Lowercase and replace common separators with underscores
-    slug = name.lower()
-    # Replace any non-alphanumeric characters with underscores
-    slug = re.sub(r'[^a-z0-9]', '_', slug)
-    # Collapse multiple underscores into one
-    slug = re.sub(r'_+', '_', slug)
-    # Remove leading/trailing underscores
-    slug = slug.strip('_')
-    # Ensure non-empty
-    return slug or 'unnamed'
-
-
-def build_unique_id(user_id: str, resource_type: str, resource_id: str) -> str:
-    """Build unique_id from components."""
-    return f"perm_{user_id}_{resource_type}_{resource_id}"
