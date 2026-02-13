@@ -27,17 +27,17 @@ A Home Assistant custom integration that provides granular permission management
 ### Permission Matrix
 Manage all user permissions from a single spreadsheet-style interface:
 
-![Permission Matrix](screenshots/permission-matrix.png)
+![Permission Matrix](screenshots/permission-matrix-en.png)
 
 ### Control Panel — Areas
 View area summaries with entity counts grouped by domain:
 
-![Control Panel - Areas](screenshots/control-panel-areas.png)
+![Control Panel - Areas](screenshots/control-panel-areas-en.png)
 
 ### Control Panel — Labels
 View label summaries with entity statistics:
 
-![Control Panel - Labels](screenshots/control-panel-labels.png)
+![Control Panel - Labels](screenshots/control-panel-labels-en.png)
 
 ## Requirements
 
