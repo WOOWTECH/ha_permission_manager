@@ -13,7 +13,7 @@ PERMISSION_LABELS = {
 }
 
 # Permission levels (numeric values for comparison)
-# Simplified from 4 levels to 2 levels (v3.0.0)
+# Simplified from 4 levels to 2 levels (v1.0.0)
 PERM_CLOSED = 0
 PERM_VIEW = 1
 
@@ -33,7 +33,7 @@ PANEL_TITLE = "Permission Manager"
 PANEL_TITLE_ZH = "權限管理器"
 PANEL_ICON = "mdi:shield-lock"
 PANEL_URL = "ha_permission_manager"
-PANEL_VERSION = "3.3.7"
+PANEL_VERSION = "1.0.0"
 
 # Control Panel configuration (unified area/label control)
 CONTROL_PANEL_URL = "ha-control-panel"

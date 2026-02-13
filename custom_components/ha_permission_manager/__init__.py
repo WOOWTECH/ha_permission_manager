@@ -47,7 +47,7 @@ async def _async_cleanup_obsolete_permissions(hass: HomeAssistant) -> None:
     entity_registry = er.async_get(hass)
     entities_to_remove = []
 
-    # Resource types that are no longer supported (removed in v3.0.0)
+    # Resource types that are no longer supported (removed in v1.0.0)
     obsolete_types = ("script", "automation", "custom")
 
     # Find all permission entities with obsolete resource types
@@ -124,7 +124,7 @@ EVENT_PANELS_UPDATED = "panels_updated"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Permission Manager from a config entry."""
-    _LOGGER.info("Setting up ha_permission_manager v3.0.0")
+    _LOGGER.info("Setting up ha_permission_manager v1.0.0")
 
     # Initialize data storage
     hass.data.setdefault(DOMAIN, {})
@@ -147,7 +147,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN]["permissions"] = {}
         _LOGGER.debug("No existing permissions found, starting fresh")
 
-    # Cleanup obsolete script/automation permission entities (v3.0.0 migration)
+    # Cleanup obsolete script/automation permission entities (v1.0.0 migration)
     await _async_cleanup_obsolete_permissions(hass)
 
     # Register WebSocket API

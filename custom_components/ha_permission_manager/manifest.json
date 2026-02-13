@@ -1,7 +1,7 @@
 {
   "domain": "ha_permission_manager",
   "name": "Permission Manager",
-  "version": "3.0.0",
+  "version": "1.0.0",
   "documentation": "https://github.com/WOOWTECH/ha_permission_manager",
   "issue_tracker": "https://github.com/WOOWTECH/ha_permission_manager/issues",
   "dependencies": ["frontend", "auth"],

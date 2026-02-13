@@ -3,7 +3,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2025.1.0%2B-41BDF5.svg)](https://www.home-assistant.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-3.0.0-blue.svg)](https://github.com/WOOWTECH/ha_permission_manager/releases)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/WOOWTECH/ha_permission_manager/releases)
 
 [繁體中文](README_zh.md)
 
