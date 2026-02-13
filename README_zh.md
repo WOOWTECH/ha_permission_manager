@@ -27,17 +27,17 @@
 ### 權限矩陣
 從單一試算表風格的介面管理所有使用者權限：
 
-![權限矩陣](screenshots/permission-matrix.png)
+![權限矩陣](screenshots/permission-matrix-zh.png)
 
 ### 控制面板 — 區域
 檢視區域摘要，包含依領域分組的實體數量：
 
-![控制面板 - 區域](screenshots/control-panel-areas.png)
+![控制面板 - 區域](screenshots/control-panel-areas-zh.png)
 
 ### 控制面板 — 標籤
 檢視標籤摘要及實體統計資訊：
 
-![控制面板 - 標籤](screenshots/control-panel-labels.png)
+![控制面板 - 標籤](screenshots/control-panel-labels-zh.png)
 
 ## 系統需求
 
