@@ -659,8 +659,7 @@ async def ws_get_admin_data(
     # Get panels from frontend_panels (excluding internal panels)
     frontend_panels = hass.data.get("frontend_panels", {})
     excluded_panels = {
-        "developer-tools", "config", "profile", "media-browser",
-        "history", "logbook", "map", "energy", "todo",
+        "developer-tools", "config", "profile",
     }
     for panel_id, panel in frontend_panels.items():
         if panel_id in excluded_panels:
