@@ -2266,7 +2266,7 @@ class HaControlPanel extends LitElement {
                 ${this._labels.map(
                   (label) => html`
                     <cp-label-card
-                      .hass=${this._hass}
+                      .hass=${this.hass}
                       .label=${label}
                       .labelEntities=${this._labelEntities[label.id] || {}}
                       @label-selected=${this._handleLabelSelected}
