@@ -68,6 +68,22 @@ View label summaries with entity statistics:
 
 No YAML configuration is required.
 
+## Dashboards
+
+After installation, the integration automatically creates two dashboards:
+
+### Permission Control Panel (Admin Only)
+
+A management dashboard visible **only to admin users**. From here, administrators can configure permissions across three categories:
+
+- **Panels** — Control which sidebar items (dashboards, add-ons, tools, etc.) each user can access in Home Assistant
+- **Areas** — Control which areas each user can see in the Control Panel dashboard
+- **Labels** — Control which labels each user can see in the Control Panel dashboard
+
+### Control Panel
+
+A dashboard visible to **both admin and non-admin users**. It displays area and label summaries with entity counts, filtered by each user's permissions. Non-admin users only see the areas and labels they have been granted access to.
+
 ## Usage
 
 ### Permission Levels
