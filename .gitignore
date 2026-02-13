@@ -1,4 +1,4 @@
-__pycache__/
+custom_components/ha_permission_manager/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -16,5 +16,4 @@ venv/
 playwright_test_info.md
 ha_area_control/
 ha_label_control/
-screenshots/
 user_prompt.md
