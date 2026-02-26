@@ -124,7 +124,7 @@ EVENT_PANELS_UPDATED = "panels_updated"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Permission Manager from a config entry."""
-    _LOGGER.info("Setting up ha_permission_manager v1.0.0")
+    _LOGGER.info("Setting up ha_permission_manager v1.0.2")
 
     # Initialize data storage
     hass.data.setdefault(DOMAIN, {})
