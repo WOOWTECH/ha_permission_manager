@@ -260,6 +260,7 @@ class CpBaseTile extends LitElement {
 
       .tile {
         background: var(--tile-bg, rgba(255, 255, 255, 0.05));
+        border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
         border-radius: 12px;
         padding: 12px 16px;
         min-height: 56px;
