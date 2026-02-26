@@ -1138,6 +1138,7 @@ class CpSummaryCard extends LitElement {
 
       .summary-card {
         background: var(--card-background-color, rgba(255, 255, 255, 0.05));
+        border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
         border-radius: 12px;
         padding: 16px;
         cursor: pointer;
@@ -1285,7 +1286,8 @@ class CpAreaCard extends LitElement {
       }
 
       .area-card {
-        background: rgba(255, 255, 255, 0.05);
+        background: var(--card-background-color, rgba(255, 255, 255, 0.05));
+        border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
         border-radius: 12px;
         padding: 16px;
         cursor: pointer;
@@ -1297,7 +1299,7 @@ class CpAreaCard extends LitElement {
       }
 
       .area-card:hover {
-        background: rgba(255, 255, 255, 0.08);
+        filter: brightness(1.05);
       }
 
       .area-card:active {
@@ -1408,6 +1410,7 @@ class CpLabelCard extends LitElement {
 
       .label-card {
         background: var(--card-background-color, rgba(255, 255, 255, 0.05));
+        border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
         border-radius: 12px;
         padding: 16px;
         cursor: pointer;
@@ -1665,20 +1668,23 @@ class HaControlPanel extends LitElement {
         cursor: pointer;
         font-size: 14px;
         font-weight: 500;
-        color: var(--secondary-text-color);
+        color: var(--app-header-text-color, #fff);
+        opacity: 0.7;
         border: none;
         background: transparent;
-        border-bottom: 2px solid transparent;
+        border-bottom: 3px solid transparent;
         transition: all 0.2s ease;
       }
 
       .tab:hover {
+        opacity: 0.85;
         background: rgba(255, 255, 255, 0.05);
       }
 
       .tab.active {
-        color: var(--primary-color);
-        border-bottom-color: var(--primary-color);
+        color: var(--app-header-text-color, #fff);
+        opacity: 1;
+        border-bottom: 3px solid var(--app-header-text-color, #fff);
       }
 
       .tab-content {
