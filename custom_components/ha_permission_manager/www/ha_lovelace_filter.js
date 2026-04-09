@@ -290,12 +290,15 @@
   }
 
   /**
-   * Poll for permission changes (replaces dead entity subscriptions)
+   * Subscribe to permission changes via event bus (replaces 5-second polling)
    */
   let lastPermHash = null;
 
-  function startPermissionPolling() {
-    setInterval(async () => {
+  async function subscribeToPermissionChanges() {
+    const hass = await waitForHass();
+    if (!hass || !hass.connection) return;
+
+    hass.connection.subscribeEvents(async () => {
       const result = await fetchAllPermissions();
       if (!result) return;
       const newHash = JSON.stringify(result);
@@ -303,7 +306,7 @@
         lastPermHash = newHash;
         checkAndApplyFilter();
       }
-    }, 5000);
+    }, "permission_manager_updated");
   }
 
   /**
@@ -316,17 +319,14 @@
     await fetchAllPermissions();
     lastPermHash = JSON.stringify(permissions);
     checkAndApplyFilter();
-    startPermissionPolling();
+    await subscribeToPermissionChanges();
 
     // Watch for navigation
     window.addEventListener("popstate", () => {
       setTimeout(checkAndApplyFilter, 500);
     });
 
-    // Re-check periodically (to catch dynamic DOM changes)
-    setInterval(checkAndApplyFilter, 1000);
-
-    // Also observe DOM changes to catch when lovelace loads
+    // Observe DOM changes to catch when lovelace loads (replaces 1-second polling)
     const observer = new MutationObserver(() => {
       if (window.location.pathname === "/" || window.location.pathname.startsWith("/lovelace")) {
         checkAndApplyFilter();

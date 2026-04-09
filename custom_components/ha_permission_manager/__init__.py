@@ -319,6 +319,14 @@ async def _async_register_panel(hass: HomeAssistant) -> None:
     # Register static path for JS files (skip if already registered)
     try:
         await hass.http.async_register_static_paths([
+            # Lit library bundle (shared by all panels, no CDN dependency)
+            StaticPathConfig(
+                "/local/lit.js",
+                hass.config.path(
+                    "custom_components/ha_permission_manager/www/lit.js"
+                ),
+                True,  # cache headers enabled for library bundle
+            ),
             StaticPathConfig(
                 "/local/ha_permission_manager.js",
                 hass.config.path(
@@ -455,6 +463,13 @@ async def async_set_permission(
 
     # Schedule async save
     await async_save_permissions(hass)
+
+    # Fire event so frontends can react immediately (replaces polling)
+    hass.bus.async_fire("permission_manager_updated", {
+        "user_id": user_id,
+        "resource_id": resource_id,
+        "level": level,
+    })
 
 
 @callback

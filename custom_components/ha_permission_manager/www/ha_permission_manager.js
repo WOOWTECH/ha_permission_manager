@@ -3,12 +3,13 @@
  * Uses Lit Element for reactive UI components
  */
 
+// Local Lit bundle (no CDN dependency for offline/intranet environments)
 import {
   LitElement,
   html,
   css,
   unsafeCSS,
-} from "https://unpkg.com/lit@2.8.0/index.js?module";
+} from "/local/lit.js";
 
 // Inlined shared styles for HA panel compatibility
 const sharedStylesLit = `

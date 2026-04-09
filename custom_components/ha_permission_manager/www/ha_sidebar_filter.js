@@ -406,8 +406,8 @@
       }
     }, "lovelace_updated");
 
-    // Poll every 5 seconds to detect permission changes (replaces dead entity subscriptions)
-    setInterval(async () => {
+    // Subscribe to permission_manager_updated event (replaces 5-second polling)
+    hass.connection.subscribeEvents(async (event) => {
       const oldIsAdmin = isAdmin;
       const { permissions, is_admin } = await fetchPermissions();
 
@@ -422,7 +422,7 @@
         await applySidebarFilter();
         await checkCurrentPanelAccess();
       }
-    }, 5000);
+    }, "permission_manager_updated");
 
     // Listen for language changes via core_config_updated event
     hass.connection.subscribeEvents(async (event) => {

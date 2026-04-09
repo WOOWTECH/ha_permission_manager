@@ -2,9 +2,9 @@
 // Combines Area Control and Label Control into a single tabbed interface
 // Matches HA Home Dashboard design with tall tiles and embedded controls
 
-// Use jsDelivr CDN (faster than unpkg, with proper caching)
+// Local Lit bundle (no CDN dependency for offline/intranet environments)
 const { LitElement, html, css } = await import(
-  "https://cdn.jsdelivr.net/npm/lit@3.1.0/+esm"
+  "/local/lit.js"
 );
 
 // ============================================================================

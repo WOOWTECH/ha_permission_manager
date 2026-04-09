@@ -3,11 +3,12 @@
  * Shown when user navigates to a panel they don't have access to
  * v2.9.31 - Security hardening: removed verbose logging
  */
+// Local Lit bundle (no CDN dependency for offline/intranet environments)
 import {
   LitElement,
   html,
   css,
-} from "https://unpkg.com/lit@2.8.0/index.js?module";
+} from "/local/lit.js";
 
 // Internationalization
 const I18N = {
